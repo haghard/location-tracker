@@ -59,6 +59,7 @@ com.rides.VehicleService.Subscribe
 1. Borrowing an identity
 
 a) Transient nodes borrow an `identity` (a dot) from permanent nodes.
+
 b) Transient nodes use that `identity`(dot) when it updates `ReplicatedVehiclePB`.
 
 ## Safe retirement
