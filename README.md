@@ -62,8 +62,8 @@ a) Transient nodes borrow an `identity` (a dot) from permanent nodes.
 
 b) Transient nodes use that `identity`(dot) when it updates `ReplicatedVehiclePB`.
 
-## Safe retirement
-A transient node that wants to leave should promise that it won't write. Transient nodes should mark its dots as `inactive`.  
+#### Safe node retirement
+A transient node that wants to leave should promise that it won't write again. Transient nodes should mark its dots as `inactive`.  
 
 
 2. Replace  HybridTime
