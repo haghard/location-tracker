@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+import "scalapb/scalapb.proto";
+import "domain/types.proto";
+import "google/protobuf/empty.proto";
+
+//option java_multiple_files = false;
+option java_multiple_files = true;
+option java_package = "com.rides";
+
+package com.rides;
+
+option (scalapb.options) = {
+  lenses: true,
+  preserve_unknown_fields: false,
+  retain_source_code_info: true,
+  single_file: true,
+  preamble: "sealed trait VehicleRequest extends scalapb.GeneratedMessage",
+};
+
+service VehicleService {
+
+  rpc PostLocation(PutLocation) returns (VehicleReply) {}
+
+  rpc GetCoordinates(GetRequest) returns (VehicleReply) {}
+
+  rpc Subscribe(SubscribeRequest) returns (stream VehicleReply) {} //types.Location
+}
+
+message PutLocation {
+  option (scalapb.message).extends = "VehicleRequest";
+  int64 vehicle_id = 1;
+  double lat = 2;
+  double lon = 3;
+}
+
+message GetRequest {
+  option (scalapb.message).extends = "VehicleRequest";
+  int64 vehicle_id = 1;
+  int64 version = 2;
+}
+
+message SubscribeRequest {
+  option (scalapb.message).extends = "VehicleRequest";
+  int64 vehicle_id = 1;
+}
+
+message VehicleReply {
+  int64 vehicle_id = 1;
+  types.Location location = 2 [(scalapb.field).no_box = true];
+
+  enum ReplyStatusCode {
+    Timeout   = 0;
+    MasterAcknowledged = 1;
+    Durable = 2;
+    NotDurable = 3;
+    NotFound = 4;
+    Unknown = 5;
+    MajorityReadError = 6;
+  }
+
+  enum DurabilityLevel {
+    None     = 0;
+    Local    = 1;
+    Majority = 2;
+  }
+
+  ReplyStatusCode statusCode = 3;
+  DurabilityLevel durabilityLevel = 4;
+  Versions versions = 5 [(scalapb.field).no_box = true];
+}
+
+message Versions {
+  int64 current = 1;
+  int64 requested = 2;
+}

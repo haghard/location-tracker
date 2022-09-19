@@ -1,0 +1,33 @@
+syntax = "proto3";
+package akka.cluster.ddata.crdt.protoc;
+
+import "scalapb/scalapb.proto";
+
+import "domain/types.proto";
+
+option (scalapb.options) = {
+  single_file: true
+  flat_package: true
+  lenses: false
+  preserve_unknown_fields: false
+};
+
+//Dot (node id + seqNum) and
+message Dot {
+  //
+  string address = 1;
+  sint64 uid = 2;
+
+  //
+  int64 version = 3; //what version that member have seen
+}
+
+message ReplicatedVehiclePB {
+
+  int64 version = 1;     //current version
+
+  types.VehicleStatePB vehicle = 2 [(scalapb.field).no_box = true];
+
+  //Dots and causal context
+  repeated Dot dots = 3; //causal context (what version what member has seen)
+}
