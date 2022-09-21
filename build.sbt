@@ -1,6 +1,6 @@
 ThisBuild / version := "0.1.0"
 
-ThisBuild / scalaVersion := "2.13.8"
+ThisBuild / scalaVersion := "2.13.9"
 val AkkaVersion = "2.6.20"
 val AkkaMngVersion  = "1.1.4"
 val AkkaHttpVersion = "10.2.10"
@@ -33,7 +33,7 @@ libraryDependencies ++= Seq(
   "ru.odnoklassniki" % "one-nio" % "1.5.0",
   "com.github.wi101" %% "embroidery" % "0.1.1",
 
-  "com.lihaoyi" % "ammonite" % "2.5.4" % "test" cross CrossVersion.full
+  //"com.lihaoyi" % "ammonite" % "2.5.4" % "test" cross CrossVersion.full
 )
 
 addCommandAlias("c", "compile")
