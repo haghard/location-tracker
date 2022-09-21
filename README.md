@@ -68,6 +68,6 @@ A transient node that wants to leave should promise that it won't write again. T
 
 2. Replace  HybridTime
 3. Bloom filter to reduce a number of actor recoveries to keys that don't exist.
-4. Dependency tracking ()
+4. Dependency tracking.
 
 
