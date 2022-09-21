@@ -5,8 +5,8 @@ Consistency-aware durability + Causal consistency
 Eventual durability:
 
 1) Master-acknowledged writes.
-2) Async replication (Ensure independent and simultaneous progress on various locations) makes writes eventually durable, 
-but enables only weak consistency due to data loss upon failure. If a failure arises before writes are made durable, they can be lost.
+2) Async replication (To ensure independent and simultaneous progress on various locations) makes writes eventually durable, 
+but enables only weak consistency due to data loss upon failures. If a failure arises before writes are made durable, they can be lost.
 
 
 Cross-client monotonic read: Every time the system satisfies a query, the value that it returns is at least as fresh as the one returned by the previous query to any client.
