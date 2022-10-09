@@ -3,7 +3,6 @@ package com.rides
 import akka.actor.typed.{Behavior, SupervisorStrategy}
 import akka.persistence.typed.PersistenceId
 import akka.actor.typed.scaladsl.Behaviors
-import akka.cluster.ddata.SelfUniqueAddress
 import akka.cluster.sharding.typed.ShardingMessageExtractor
 import akka.cluster.sharding.typed.scaladsl.EntityTypeKey
 import akka.persistence.typed.state.scaladsl.{DurableStateBehavior, Effect}
@@ -26,30 +25,26 @@ https://github.com/akka/akka/tree/main/akka-persistence-typed-tests/src/test/sca
 https://doc.akka.io/docs/akka-persistence-jdbc/current/durable-state-store.html
 https://doc.akka.io/docs/akka/2.6/durable-state/persistence-query.html (DurableStateStoreRegistry)
  */
+
 object VehicleStateBased {
 
-  private val numberOfShards: Int = 1 << 6
-  val TypeKey                     = EntityTypeKey[VehicleCmd]("rides")
+  val numberOfShards: Int = 1 << 8
+  val TypeKey             = EntityTypeKey[VehicleCmd]("vehicles")
 
-  final case class ShardingMsgExtractor(
-    ua: SelfUniqueAddress,
-    shardNum: Int
-  ) extends ShardingMessageExtractor[VehicleCmd, VehicleCmd] {
-    override def entityId(cmd: VehicleCmd): String =
-      cmd match {
-        case c: ReportLocation => c.vehicleId.toString
-        case _: GetLocation    => throw new Exception("GetLocation.entityId")
-        case StopEntity()      => throw new Exception("StopEntity.entityId")
-      }
+  def shardingMessageExtractor() =
+    new ShardingMessageExtractor[VehicleCmd, VehicleCmd] {
+      override def entityId(cmd: VehicleCmd): String =
+        cmd match {
+          case c: ReportLocation => c.vehicleId.toString
+          case _: GetLocation    => throw new Exception("GetLocation.entityId")
+          case StopEntity()      => throw new Exception("StopEntity.entityId")
+        }
 
-    override def shardId(entityId: String): String =
-      math.abs(entityId.hashCode % shardNum).toString
+      override def shardId(entityId: String): String =
+        math.abs(entityId.hashCode % numberOfShards).toString
 
-    override def unwrapMessage(cmd: VehicleCmd): VehicleCmd = cmd
-  }
-
-  def shardingMessageExtractor(selfAddress: SelfUniqueAddress) =
-    ShardingMsgExtractor(selfAddress, numberOfShards)
+      override def unwrapMessage(cmd: VehicleCmd): VehicleCmd = cmd
+    }
 
   def apply(persistenceId: PersistenceId): Behavior[VehicleCmd] =
     Behaviors.setup { ctx =>

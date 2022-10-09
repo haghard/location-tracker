@@ -26,8 +26,6 @@ import scala.util.{Failure, Success, Try, Using}
 
 object DDataReplicator {
 
-  // def orderIdHex2Long(tenantIdHex: String): Long = java.lang.Long.parseUnsignedLong(tenantIdHex, 16)
-
   def vehicleId2Long(vehicleId: String): Long =
     java.lang.Long.parseLong(vehicleId)
 
@@ -54,10 +52,14 @@ object DDataReplicator {
       }
     }
 
-  def readLocal(value: akka.cluster.ddata.durable.raf.SharedMemoryLongMap.SharedMemoryValue): ReplicatedVehicle =
+  def readLocal(
+    value: akka.cluster.ddata.durable.raf.SharedMemoryLongMap.SharedMemoryValue
+  ): ReplicatedVehicle =
     value.envelope match {
-      case ev: akka.cluster.ddata.Replicator.Internal.DataEnvelope => ev.data.asInstanceOf[ReplicatedVehicle]
-      case _                                                       => ???
+      case ev: akka.cluster.ddata.Replicator.Internal.DataEnvelope =>
+        ev.data.asInstanceOf[ReplicatedVehicle]
+      case _ =>
+        throw new Exception("readLocal failure")
     }
 
   def props(
@@ -523,7 +525,7 @@ final class DDataReplicator(
     }
 
   /** @return
-    *   SHA-1 digest of the serialized data, and the size of the serialized data
+    *   SHA-512 digest of the serialized data, and the size of the serialized data
     */
   def digest(envelope: DataEnvelope): (Array[Byte], Int) =
     if (envelope.data == DeletedData) (DDataReplicator.DeletedDig, 0)
@@ -785,11 +787,11 @@ final class DDataReplicator(
           thatEnvelope
         }*/
 
-      val prevStr =
+      /*val prevStr =
         if (prev != null) {
           val prevEnv = prev.envelope.asInstanceOf[DataEnvelope].data.asInstanceOf[ReplicatedVehicle]
           prevEnv.replicationState.map { case (a, c) => s"${a.address.host.getOrElse("")}:$c" }.mkString(", ")
-        } else "null"
+        } else "null"*/
 
       val that = thatEnvelope.data.asInstanceOf[ReplicatedVehicle]
       val merged = that.markSeen(

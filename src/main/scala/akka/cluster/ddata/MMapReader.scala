@@ -60,7 +60,7 @@ object MMapReader {
   ): Behavior[Protocol] =
     Behaviors.receiveMessagePartial {
       case Protocol.KeyRange(offset, keys) =>
-        ctx.log.warn("Page: Addresses - [{}...{}]  Orders - [{}]", prevOffset, offset, keys.mkString(","))
+        ctx.log.warn("Page: Addresses - [{}...{}]  Keys - [{}]", prevOffset, offset, keys.mkString(","))
         implicit val s  = ctx.system
         implicit val ec = ctx.executionContext
         val logger      = ctx.log

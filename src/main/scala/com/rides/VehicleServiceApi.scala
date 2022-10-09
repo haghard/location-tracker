@@ -68,8 +68,7 @@ class VehicleServiceApi(
                 com.rides.Versions(localValue.version, req.version)
               )
             )
-          else
-            // system.log.warn(s"Local value is not durable (${localValue.version}, ${req.version})")
+          else {
             vehicleApi.askApi(
               GetLocation(
                 vehicleId = req.vehicleId,
@@ -77,8 +76,16 @@ class VehicleServiceApi(
                 local = Location(localValue.state.lat, localValue.state.lon)
               )
             )
+          }
         } else {
-          Future.successful(
+          vehicleApi.askApi(
+            GetLocation(
+              vehicleId = req.vehicleId,
+              version = req.version,
+              local = Location(localValue.state.lat, localValue.state.lon)
+            )
+          )
+          /*Future.successful(
             VehicleReply(
               req.vehicleId,
               Location(localValue.state.lat, localValue.state.lon),
@@ -86,7 +93,7 @@ class VehicleServiceApi(
               VehicleReply.DurabilityLevel.Local,
               com.rides.Versions(localValue.version, req.version)
             )
-          )
+          )*/
         }
       case None =>
         Future.successful(

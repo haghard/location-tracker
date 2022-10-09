@@ -63,9 +63,8 @@ final class VehicleApi private (
           .withAttributes(Attributes.inputBuffer(0, 0))
           .mapAsync(parallelism) { case (cmd, p, respondee) =>
             cmd match {
-              case post: ReportLocation =>
-                shardRegion.tell(post.withReplyTo(actorRefResolver.toSerializationFormat(respondee)))
-                // TODO: what if you never get a reply back
+              case cmd: ReportLocation =>
+                shardRegion.tell(cmd.withReplyTo(actorRefResolver.toSerializationFormat(respondee)))
                 p.future
 
               case get: GetLocation =>
@@ -125,9 +124,9 @@ final class VehicleApi private (
     }
 
   def askApi(cmd: VehicleCmd): Future[VehicleReply] = {
+    val reqId                             = wvlet.airframe.ulid.ULID.newULID.toString
     val p                                 = Promise[Option[VehicleReply]]()
-    val name                              = wvlet.airframe.ulid.ULID.newULID.toString
-    val respondee: ActorRef[VehicleReply] = system.systemActorOf(Respondee(name, p, askTimeout.duration), name)
+    val respondee: ActorRef[VehicleReply] = system.systemActorOf(Respondee(reqId, p, askTimeout.duration), reqId)
     queue.offer((cmd, p, respondee)) match {
       case Enqueued =>
         p.future.flatMap(
@@ -137,7 +136,7 @@ final class VehicleApi private (
             )
           ) { r: VehicleReply => Future.successful(r) }
         )(system.executionContext)
-      case Dropped => Future.failed(OverCapacity(name))
+      case Dropped => Future.failed(OverCapacity(reqId))
       case other   => Future.failed(Error(other))
     }
   }

@@ -28,8 +28,9 @@ libraryDependencies ++= Seq(
   "io.aeron" % "aeron-driver" % "1.39.0",
   "io.aeron" % "aeron-client" % "1.39.0",
 
-  "ch.qos.logback" % "logback-classic" % "1.4.0",
-  "org.wvlet.airframe" %% "airframe-ulid" % "22.7.3",
+  "ch.qos.logback" % "logback-classic" % "1.4.3",
+  "org.wvlet.airframe" %% "airframe-ulid" % "22.9.3",
+
   "ru.odnoklassniki" % "one-nio" % "1.5.0",
   "com.github.wi101" %% "embroidery" % "0.1.1",
 

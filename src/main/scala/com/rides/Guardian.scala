@@ -27,7 +27,10 @@ object Guardian {
     final case class SelfUpMsg(mba: immutable.SortedSet[Member]) extends Protocol
   }
 
-  def apply(dockerHostName: String, grpcPort: Int): Behavior[Nothing] =
+  def apply(
+    dockerHostName: String,
+    grpcPort: Int
+  ): Behavior[Nothing] =
     Behaviors
       .setup[Protocol] { ctx =>
         implicit val sys               = ctx.system
@@ -98,7 +101,7 @@ object Guardian {
               Entity(typeKey = VehicleStateBased.TypeKey) { entityCtx =>
                 VehicleStateBased(PersistenceId.ofUniqueId(entityCtx.entityId))
               }
-                .withMessageExtractor(VehicleStateBased.shardingMessageExtractor(selfUniqueAddress))
+                .withMessageExtractor(VehicleStateBased.shardingMessageExtractor())
                 .withStopMessage(com.rides.domain.StopEntity())
                 .withSettings(
                   ClusterShardingSettings(ctx.system)
@@ -140,7 +143,7 @@ object Guardian {
           ctx.log.warn("★ ★ ★ 3. All members by age: [{}]", membersByAge.map(_.details).mkString(","))
 
           import embroidery._
-          ctx.log.info("Location tracker".toAsciiArt)
+          ctx.log.info("Location-Tracker".toAsciiArt)
 
           Bootstrap(shardRegion, sharedMemoryMap, ref, dockerHostName, grpcPort)(ctx.system, cluster)
           Behaviors.same

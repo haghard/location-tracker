@@ -68,8 +68,8 @@ final case class ReplicatedVehicle(
     decider: ReplicatedVehicle.Decider = ReplicatedVehicle.atLeast(2)
   ): Boolean = {
     // Create a view so that when calculating the result we can break early once we've counted enough replicas.
-    val votes: Iterable[Boolean] = clusterMembersView.view.map { m =>
-      self.replicationState.get(m).getOrElse(-1L) == self.version
+    val votes: Iterable[Boolean] = clusterMembersView.view.map { uniqueAddress =>
+      self.replicationState.get(uniqueAddress).getOrElse(-1L) == self.version
     }
     decider(votes)
   }
@@ -121,5 +121,5 @@ final case class ReplicatedVehicle(
   }
 
   override def toString() =
-    s"ReplVehicle(${state.toProtoString},$version,${replicationState.mkString(",")})"
+    s"RVehicle(${state.toProtoString},$version,${replicationState.mkString(",")})"
 }
