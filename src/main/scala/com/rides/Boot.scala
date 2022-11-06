@@ -1,6 +1,11 @@
 package com.rides
 
 import akka.actor.typed.ActorSystem
+import akka.cluster.ddata.replicator.ReplicatedVehicle
+import akka.persistence.query.typed.scaladsl.DurableStateStoreBySliceQuery
+import akka.projection.eventsourced.scaladsl.EventSourcedProvider
+import akka.projection.grpc.consumer.scaladsl.GrpcReadJournal
+import akka.projection.state.scaladsl.DurableStateSourceProvider
 import com.typesafe.config.{Config, ConfigFactory}
 
 import java.io.File
@@ -72,6 +77,9 @@ object Boot extends Ops {
         .withFallback(ConfigFactory.load())
     }
 
+    // GrpcReadJournal.apply()
+    // EventSourcedProvider.eventsBySlices
+
     // val buckets = 3
     // com.google.common.hash.Hashing.consistentHash(-634_567L, buckets)
     // com.google.common.hash.Murmur3_128HashFunction
@@ -82,6 +90,20 @@ object Boot extends Ops {
     akka.management.scaladsl.AkkaManagement(system).start()
     akka.management.cluster.bootstrap.ClusterBootstrap(system).start()
     akka.discovery.Discovery(system).loadServiceDiscovery("config") // kubernetes-api
+
+    // https://doc.akka.io/docs/akka/2.6/durable-state/persistence-query.html
+    /*val q: DurableStateStoreBySliceQuery[Any] = ???
+    DurableStateSourceProvider.changesBySlices(system, q, "", 1, 10)
+
+    import akka.persistence.state.DurableStateStoreRegistry
+    import akka.persistence.query.scaladsl.DurableStateStoreQuery
+    import akka.persistence.query.DurableStateChange
+    import akka.persistence.query.UpdatedDurableState
+
+    akka.persistence.state
+      .DurableStateStoreRegistry(system)
+      .durableStateStoreFor[DurableStateStoreQuery[ReplicatedVehicle]]("")
+      .changes("")*/
 
     // TODO: for local debug only !!!!!!!!!!!!!!!!!!!
     val _ = scala.io.StdIn.readLine()

@@ -19,6 +19,7 @@ message VehicleStatePB {
   int64 vehicleId = 1;
   double lat = 2;
   double lon = 3;
+  //int32 batteryLevel
   google.protobuf.Timestamp updatedAt = 4 [(scalapb.field).no_box = true];
   string replyTo = 5;
 }
@@ -26,6 +27,19 @@ message VehicleStatePB {
 message Location {
   double lat = 1;
   double lon = 2;
+}
+
+
+message VehicleRangeStatePB {
+  map<int64, types.VehicleStatePB> vehicles = 1;
+  google.protobuf.Timestamp updatedAt = 2 [(scalapb.field).no_box = true];
+  int64 updatedVehicleId = 3;
+  string replyTo = 4;
+}
+
+
+message ShardAllocatedPB {
+  repeated string shards = 1;
 }
 
 /*

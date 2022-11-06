@@ -18,6 +18,7 @@ class VehicleServiceApi(
 )(implicit val system: ActorSystem[_])
     extends com.rides.VehicleService {
 
+  //
   override def subscribe(req: SubscribeRequest): Source[VehicleReply, akka.NotUsed] =
     /*
     val it  = Iterator.from(0, 0 + 100).map(each => Location(3.701101d + each.toDouble, -3.701101d))
@@ -43,21 +44,25 @@ class VehicleServiceApi(
             )
           }
           .mapMaterializedValue(_ => akka.NotUsed)
-      /*.via(Flow[Location].watchTermination() { (_, fut) =>
-            fut.onComplete(t => println("" + t))(scala.concurrent.ExecutionContext.parasitic)
-          })*/
 
       case None =>
         Source.empty
     }
 
-  override def postLocation(req: PutLocation): Future[VehicleReply] =
-    vehicleApi.askApi(ReportLocation(req.vehicleId, Location(req.lon, req.lat)))
+  override def postLocation(req: PutLocation): Future[VehicleReply] = {
+    val reqId = wvlet.airframe.ulid.ULID.newULID.toString
+    vehicleApi.askApi(
+      reqId,
+      ReportLocation(req.vehicleId, Location(req.lon, req.lat) /*, requestId = reqId*/ )
+    )
+  }
 
   override def getCoordinates(req: GetRequest): Future[VehicleReply] =
     Option(sharedMemoryMap.get(req.vehicleId)).map(DDataReplicator.readLocal) match {
       case Some(localValue) =>
+        val requestId = wvlet.airframe.ulid.ULID.newULID.toString
         if (localValue.isDurable(cluster.state.members.map(_.uniqueAddress))) {
+          system.log.warn("Local value is durable ({},{})", localValue.version, req.version)
           if (localValue.version >= req.version)
             Future.successful(
               VehicleReply(
@@ -69,7 +74,9 @@ class VehicleServiceApi(
               )
             )
           else {
+            system.log.warn(s"Local value is durable but version mismatch ({},{})", localValue.version, req.version)
             vehicleApi.askApi(
+              requestId,
               GetLocation(
                 vehicleId = req.vehicleId,
                 version = req.version,
@@ -78,7 +85,11 @@ class VehicleServiceApi(
             )
           }
         } else {
+          system.log.warn(
+            "Local value most likely is durable, but we need to wait for pruning before `isDurable` starts returning true"
+          )
           vehicleApi.askApi(
+            requestId,
             GetLocation(
               vehicleId = req.vehicleId,
               version = req.version,
@@ -106,52 +117,4 @@ class VehicleServiceApi(
           )
         )
     }
-
-  /*
-    val value = sharedMemoryMap.get(req.vehicleId)
-    if (value != null) {
-      val localValue = DDataReplicator.readLocal(value)
-
-      // fullyReplicated
-      if (localValue.isDurable(cluster.state.members.map(_.uniqueAddress))) {
-        if (localValue.version >= req.version)
-          Future.successful(
-            VehicleReply(
-              req.vehicleId,
-              Location(localValue.state.lat, localValue.state.lon),
-              VehicleReply.ReplyStatusCode.Durable,
-              VehicleReply.DurabilityLevel.Local,
-              com.rides.Versions(localValue.version, req.version)
-            )
-          )
-        else
-          // system.log.warn(s"Local value is not durable (${localValue.version}, ${req.version})")
-          vehicleApi.askApi(
-            GetLocation(
-              vehicleId = req.vehicleId,
-              version = req.version,
-              local = Location(localValue.state.lat, localValue.state.lon)
-            )
-          )
-      } else {
-        Future.successful(
-          VehicleReply(
-            req.vehicleId,
-            Location(localValue.state.lat, localValue.state.lon),
-            VehicleReply.ReplyStatusCode.Unknown, // wait for pruning
-            VehicleReply.DurabilityLevel.Local,
-            com.rides.Versions(localValue.version, req.version)
-          )
-        )
-      }
-    } else
-      Future.successful(
-        VehicleReply(
-          req.vehicleId,
-          Location(),
-          VehicleReply.ReplyStatusCode.NotFound,
-          VehicleReply.DurabilityLevel.Local,
-          com.rides.Versions(-1, req.version)
-        )
-      )*/
 }

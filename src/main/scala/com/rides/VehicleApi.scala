@@ -20,6 +20,8 @@ import akka.cluster.ddata.Replicator.{Get, GetFailure, GetSuccess, NotFound, Rea
 import akka.cluster.ddata.replicator.ReplicatedVehicle
 import akka.pattern.ask
 
+import akka.cluster.ddata.Replicator.UpdateResponse
+
 object VehicleApi {
 
   final case class OverCapacity(name: String) extends Exception(s"$name cannot accept more requests") with NoStackTrace
@@ -57,57 +59,15 @@ final class VehicleApi private (
 
   private val (queue, done) =
     Source
-      .queue[(VehicleCmd, Promise[Option[VehicleReply]], ActorRef[VehicleReply])](bufferSize)
+      .queue[(ReportLocation, Promise[Option[VehicleReply]], ActorRef[UpdateResponse[_]])](bufferSize)
       .via(
-        Flow[(VehicleCmd, Promise[Option[VehicleReply]], ActorRef[VehicleReply])]
+        Flow[(ReportLocation, Promise[Option[VehicleReply]], ActorRef[UpdateResponse[_]])]
           .withAttributes(Attributes.inputBuffer(0, 0))
           .mapAsync(parallelism) { case (cmd, p, respondee) =>
             cmd match {
               case cmd: ReportLocation =>
                 shardRegion.tell(cmd.withReplyTo(actorRefResolver.toSerializationFormat(respondee)))
                 p.future
-
-              case get: GetLocation =>
-                val VehicleKey = ReplicatedVehicle.Key(get.vehicleId.toString)
-                (stateReplicator ? Get(VehicleKey, readMajority)).map {
-                  case r @ GetSuccess(_, _) =>
-                    val repVehicle = r.get(VehicleKey)
-                    val status =
-                      if (repVehicle.version >= get.version) VehicleReply.ReplyStatusCode.Durable
-                      else VehicleReply.ReplyStatusCode.NotDurable
-                    respondee.tell(
-                      VehicleReply(
-                        get.vehicleId,
-                        domain.types.protobuf.Location(repVehicle.state.lat, repVehicle.state.lon),
-                        status,
-                        VehicleReply.DurabilityLevel.Majority,
-                        com.rides.Versions(repVehicle.version, get.version)
-                      )
-                    )
-                  case GetFailure(_, _) =>
-                    respondee.tell(
-                      VehicleReply(
-                        get.vehicleId,
-                        get.local,
-                        VehicleReply.ReplyStatusCode.MajorityReadError,
-                        VehicleReply.DurabilityLevel.Majority,
-                        com.rides.Versions(-1, get.version)
-                      )
-                    )
-                  case NotFound(_, _) =>
-                    respondee.tell(
-                      VehicleReply(
-                        get.vehicleId,
-                        domain.types.protobuf.Location(),
-                        VehicleReply.ReplyStatusCode.NotFound,
-                        VehicleReply.DurabilityLevel.Majority,
-                        com.rides.Versions(-1, get.version)
-                      )
-                    )
-                }(system.executionContext)
-                p.future
-              case StopEntity() =>
-                throw new Exception("Unexpected cmd StopEntity !")
             }
           }
           .named("vehicle-api")
@@ -123,23 +83,67 @@ final class VehicleApi private (
       whenDone
     }
 
-  def askApi(cmd: VehicleCmd): Future[VehicleReply] = {
-    val reqId                             = wvlet.airframe.ulid.ULID.newULID.toString
-    val p                                 = Promise[Option[VehicleReply]]()
-    val respondee: ActorRef[VehicleReply] = system.systemActorOf(Respondee(reqId, p, askTimeout.duration), reqId)
-    queue.offer((cmd, p, respondee)) match {
-      case Enqueued =>
-        p.future.flatMap(
-          _.fold[Future[VehicleReply]](
-            Future.failed(
-              new GrpcServiceException(Status.UNAVAILABLE.withDescription(s"No response within $askTimeout!"))
+  def askApi(
+    reqId: String,
+    cmd: VehicleCmd
+  ): Future[VehicleReply] =
+    cmd match {
+      case post: ReportLocation =>
+        val p = Promise[Option[VehicleReply]]()
+        val respondee: ActorRef[akka.cluster.ddata.Replicator.UpdateResponse[_]] =
+          system.systemActorOf(ReplicatorRespondee(reqId, p, askTimeout.duration), reqId)
+
+        queue.offer((post, p, respondee)) match {
+          case Enqueued =>
+            p.future.flatMap(
+              _.fold[Future[VehicleReply]](
+                Future.failed(
+                  new GrpcServiceException(Status.UNAVAILABLE.withDescription(s"No response within $askTimeout!"))
+                )
+              ) { r: VehicleReply => Future.successful(r) }
+            )(system.executionContext)
+          case Dropped => Future.failed(OverCapacity(reqId))
+          case other   => Future.failed(Error(other))
+        }
+
+      case get: GetLocation =>
+        val VehicleKey = ReplicatedVehicle.Key(get.vehicleId.toString)
+        (stateReplicator ? Get(VehicleKey, readMajority)).map {
+          case r @ GetSuccess(_, _) =>
+            val repVehicle = r.get(VehicleKey)
+            val status =
+              if (repVehicle.version >= get.version) VehicleReply.ReplyStatusCode.Durable
+              else VehicleReply.ReplyStatusCode.NotDurable
+            VehicleReply(
+              get.vehicleId,
+              domain.types.protobuf.Location(repVehicle.state.lat, repVehicle.state.lon),
+              status,
+              VehicleReply.DurabilityLevel.Majority,
+              com.rides.Versions(repVehicle.version, get.version)
             )
-          ) { r: VehicleReply => Future.successful(r) }
-        )(system.executionContext)
-      case Dropped => Future.failed(OverCapacity(reqId))
-      case other   => Future.failed(Error(other))
+
+          case GetFailure(_, _) =>
+            VehicleReply(
+              get.vehicleId,
+              get.local,
+              VehicleReply.ReplyStatusCode.MajorityReadError,
+              VehicleReply.DurabilityLevel.Majority,
+              com.rides.Versions(-1, get.version)
+            )
+
+          case NotFound(_, _) =>
+            VehicleReply(
+              get.vehicleId,
+              domain.types.protobuf.Location(),
+              VehicleReply.ReplyStatusCode.NotFound,
+              VehicleReply.DurabilityLevel.Majority,
+              com.rides.Versions(-1, get.version)
+            )
+        }(system.executionContext)
+
+      case StopEntity() =>
+        throw new Exception(s"Unexpected ${classOf[StopEntity].getName} !")
     }
-  }
 
   private def shutdown(): Unit =
     queue.complete()

@@ -1,17 +1,15 @@
-package com.rides
+package com.rides.state
 
-import akka.actor.typed.{Behavior, SupervisorStrategy}
-import akka.persistence.typed.PersistenceId
 import akka.actor.typed.scaladsl.Behaviors
+import akka.actor.typed.{ActorRefResolver, Behavior, SupervisorStrategy}
 import akka.cluster.sharding.typed.ShardingMessageExtractor
 import akka.cluster.sharding.typed.scaladsl.EntityTypeKey
+import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.state.scaladsl.{DurableStateBehavior, Effect}
-import com.rides.domain.VehicleCmd
 import com.rides.domain.types.protobuf.VehicleStatePB
+import com.rides.domain.*
 
 import scala.concurrent.duration.DurationInt
-import com.rides.domain.*
-import com.rides.domain.{GetLocation, ReportLocation}
 
 /*
 https://softwaremill.com/akka-durable-state/?s=03
@@ -24,12 +22,14 @@ https://github.com/akka/akka/tree/main/akka-persistence-typed-tests/src/test/sca
 
 https://doc.akka.io/docs/akka-persistence-jdbc/current/durable-state-store.html
 https://doc.akka.io/docs/akka/2.6/durable-state/persistence-query.html (DurableStateStoreRegistry)
+
  */
 
-object VehicleStateBased {
+object Vehicle {
+  type State = VehicleStatePB
 
-  val numberOfShards: Int = 1 << 8
-  val TypeKey             = EntityTypeKey[VehicleCmd]("vehicles")
+  val numberOfShards: Long = 1 << 8
+  val TypeKey              = EntityTypeKey[VehicleCmd]("vehicles")
 
   def shardingMessageExtractor() =
     new ShardingMessageExtractor[VehicleCmd, VehicleCmd] {
@@ -41,17 +41,22 @@ object VehicleStateBased {
         }
 
       override def shardId(entityId: String): String =
-        math.abs(entityId.hashCode % numberOfShards).toString
+        math.abs(entityId.toLong /*.hashCode*/ % numberOfShards).toString
 
       override def unwrapMessage(cmd: VehicleCmd): VehicleCmd = cmd
     }
 
-  def apply(persistenceId: PersistenceId): Behavior[VehicleCmd] =
+  def apply(
+    vehicleId: Long
+    // persistenceId: PersistenceId
+  ): Behavior[VehicleCmd] =
     Behaviors.setup { ctx =>
-      DurableStateBehavior[VehicleCmd, VehicleStatePB](
-        persistenceId,
-        VehicleStatePB(vehicleId = persistenceId.id.toLong),
-        cmdHandler(ctx.log)
+      val refResolver = ActorRefResolver(ctx.system)
+      DurableStateBehavior[VehicleCmd, State](
+        PersistenceId.ofUniqueId(vehicleId.toString),
+        // persistenceId,
+        VehicleStatePB(vehicleId),
+        cmdHandler(refResolver, ctx.log)
       )
         .onPersistFailure(SupervisorStrategy.restartWithBackoff(200.millis, 5.seconds, 0.1))
         .receiveSignal {
@@ -63,10 +68,11 @@ object VehicleStateBased {
         }
     }
 
-  def cmdHandler(logger: org.slf4j.Logger): (VehicleStatePB, VehicleCmd) => Effect[VehicleStatePB] =
+  def cmdHandler(refResolver: ActorRefResolver, logger: org.slf4j.Logger): (State, VehicleCmd) => Effect[State] =
     (vehicle, cmd) =>
       cmd match {
         case ReportLocation(id, location, replyTo) =>
+          // val respondee = refResolver.resolveActorRef[Any](replyTo)
           val now = java.time.Instant.now()
           val updatedVehicle = vehicle
             .withVehicleId(id)
@@ -76,20 +82,20 @@ object VehicleStateBased {
             .withReplyTo(replyTo)
 
           // Effect.delete[VehicleStatePB]()
-
           Effect
             .persist(updatedVehicle)
+            // .thenRun(_ => respondee.tell(???))
             .thenRun(_ => logger.info("Persist {}", updatedVehicle.toProtoString))
             .thenNoReply() //
 
         case _: GetLocation =>
           Effect
-            .none[VehicleStatePB]
+            .none[State]
             .thenNoReply()
 
         case StopEntity() =>
           Effect
-            .none[VehicleStatePB]
+            .none[State]
             .thenRun(_ => logger.info("Passivate"))
             .thenStop()
       }

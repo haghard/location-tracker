@@ -31,3 +31,15 @@ message ReplicatedVehiclePB {
   //Dots and causal context
   repeated Dot dots = 3; //causal context (what version what member has seen)
 }
+
+
+//All requests for a given range of vehicles i.e ([1..10] or [11...20]) will land on the same range
+message ReplicatedVehicleRangePB {
+
+  int64 version = 1;     //current version
+
+  types.VehicleRangeStatePB vehicles = 2 [(scalapb.field).no_box = true];
+
+  //Dots and causal context
+  repeated Dot dots = 3; //causal context (what version what member has seen)
+}

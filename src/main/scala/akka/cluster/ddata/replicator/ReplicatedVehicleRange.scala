@@ -1,10 +1,11 @@
 package akka.cluster.ddata.replicator
 
 import akka.cluster.UniqueAddress
+import akka.cluster.ddata.crdt.protoc.ReplicatedVehicleRangePB
 import akka.cluster.ddata.{Key, RemovedNodePruning, ReplicatedDataSerialization}
-import com.rides.domain.types.protobuf.VehicleStatePB
+import com.rides.domain.types.protobuf.VehicleRangeStatePB
 
-object ReplicatedVehicle {
+object ReplicatedVehicleRange {
 
   /** Decider for voting.
     */
@@ -44,29 +45,28 @@ object ReplicatedVehicle {
     votesFor > totalVoters / 2
   }
 
-  def Key(id: String): Key[ReplicatedVehicle] = ReplicatedVehicleKey(id)
+  def Key(id: String): Key[ReplicatedVehicleRange] = ReplicatedVehicleRangeKey(id)
 
-  final case class ReplicatedVehicleKey(_id: String)
-      extends Key[ReplicatedVehicle](_id)
+  final case class ReplicatedVehicleRangeKey(_id: String)
+      extends Key[ReplicatedVehicleRange](_id)
       with ReplicatedDataSerialization
 }
 
 /** Each node sequentially numbers the updates that it generates, and so the set of updates that a node has delivered
   * can be summarised by remembering just the highest sequence number from each node.
   */
-final case class ReplicatedVehicle(
-  state: VehicleStatePB,
-  // writerEpoch: Long, //https://martinfowler.com/articles/patterns-of-distributed-systems/generation.html
+final case class ReplicatedVehicleRange(
+  state: VehicleRangeStatePB,                            // ReplicatedVehicleRangePB
   version: Long = 0L,                                    // version only moves forward
-  replicationState: Map[UniqueAddress, Long] = Map.empty // which replicas have seen which versions
+  replicationState: Map[UniqueAddress, Long] = Map.empty // Which replicas have seen which piece of information
 ) extends akka.cluster.ddata.ReplicatedData
     with ReplicatedDataSerialization
     with RemovedNodePruning { self =>
 
-  type T = ReplicatedVehicle
+  type T = ReplicatedVehicleRange
 
-  def update(vehicle: VehicleStatePB, selfUniqueAddress: akka.cluster.UniqueAddress, revision: Long): T =
-    self.copy(vehicle, /*writerEpoch,*/ revision, self.replicationState.updated(selfUniqueAddress, revision))
+  def update(state: VehicleRangeStatePB, selfUniqueAddress: akka.cluster.UniqueAddress, revision: Long): T =
+    self.copy(state, revision, self.replicationState.updated(selfUniqueAddress, revision))
 
   // isReplicated|isDurable
   def isDurable(
@@ -80,7 +80,10 @@ final case class ReplicatedVehicle(
     decider(votes)
   }
 
-  def markSeen(selfMember: akka.cluster.UniqueAddress, that: Option[ReplicatedVehicle]): ReplicatedVehicle =
+  def markSeen(
+    selfMember: akka.cluster.UniqueAddress,
+    that: Option[ReplicatedVehicleRange]
+  ): ReplicatedVehicleRange =
     that match {
       case Some(other) =>
         self.copy(replicationState = replicationState.updated(selfMember, other.version.max(self.version))).merge(other)
@@ -88,24 +91,19 @@ final case class ReplicatedVehicle(
         self.copy(replicationState = replicationState.updated(selfMember, self.version))
     }
 
-  override def merge(that: ReplicatedVehicle): ReplicatedVehicle = {
+  override def merge(that: ReplicatedVehicleRange): ReplicatedVehicleRange = {
     var merged = that.replicationState
-    for ((key, thisVersion) <- self.replicationState)
+    for ((key, thisValue) <- self.replicationState)
       merged.get(key) match {
-        case Some(thatVersion) =>
-          val version = if (thisVersion > thatVersion) thisVersion else thatVersion
-          if (version != thatVersion)
-            merged = merged.updated(key, version)
+        case Some(thatValue) =>
+          val newValue = if (thisValue > thatValue) thisValue else thatValue
+          if (newValue != thatValue)
+            merged = merged.updated(key, newValue)
         case None =>
-          merged = merged.updated(key, thisVersion)
+          merged = merged.updated(key, thisValue)
       }
 
-    self.copy(
-      if (self.version < that.version) that.state else self.state,
-      // self.writerEpoch,
-      self.version.max(that.version),
-      merged
-    )
+    self.copy(if (self.version < that.version) that.state else self.state, self.version.max(that.version), merged)
   }
 
   override def modifiedByNodes: Set[UniqueAddress] = replicationState.keySet
@@ -129,5 +127,5 @@ final case class ReplicatedVehicle(
   }
 
   override def toString() =
-    s"RVehicle(${state.toProtoString},$version,${replicationState.mkString(",")})"
+    s"RVehicle($version,${replicationState.mkString(",")})"
 }

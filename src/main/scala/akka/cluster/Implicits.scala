@@ -10,6 +10,8 @@ object Implicits {
      */
     def details: String = s"${member.uniqueAddress}:${member.upNumber}"
     // `upNumber` is monotonically growing sequence number which increases each time new incarnation of the process starts.
+
+    def addressWithNum: String = s"${member.uniqueAddress.address}:${member.upNumber}"
   }
 
   implicit class VectorClockOps(val vc: akka.cluster.VectorClock) extends AnyVal {

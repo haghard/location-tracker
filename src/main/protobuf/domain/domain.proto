@@ -28,6 +28,7 @@ message ReportLocation {
   int64 vehicle_id = 1;
   types.Location location = 2 [(scalapb.field).no_box = true];
   string replyTo = 3;
+  //string requestId = 4;
 }
 
 message GetLocation {

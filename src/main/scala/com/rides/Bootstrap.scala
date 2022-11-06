@@ -4,6 +4,7 @@ import akka.Done
 import akka.actor.typed.{ActorRef, ActorSystem}
 import akka.actor.CoordinatedShutdown
 import akka.actor.CoordinatedShutdown.{PhaseActorSystemTerminate, PhaseBeforeServiceUnbind, PhaseServiceRequestsDone, PhaseServiceStop, PhaseServiceUnbind, Reason}
+import akka.cluster.sharding.external.scaladsl.ExternalShardAllocationClient
 import akka.cluster.typed.Cluster
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.{HttpRequest, HttpResponse}

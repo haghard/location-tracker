@@ -2,7 +2,7 @@ package com.rides.persistence
 
 import akka.Done
 import akka.actor.typed.ActorRefResolver
-import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
+import akka.actor.typed.scaladsl.adapter.{ClassicActorSystemOps, TypedActorRefOps}
 import akka.actor.{ActorRef, ExtendedActorSystem, RootActorPath}
 import akka.cluster.ddata.Replicator.*
 import akka.cluster.ddata.replicator.ReplicatedVehicle
@@ -10,22 +10,22 @@ import akka.pattern.ask
 import akka.persistence.state.DurableStateStoreProvider
 import akka.persistence.state.scaladsl.GetObjectResult
 import com.rides.VehicleReply
-import com.rides.domain.types.protobuf.VehicleStatePB
+import com.rides.state.Vehicle
 
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, Future, Promise}
 
-final class ReplicatedMMapApi(system: ExtendedActorSystem) extends DurableStateStoreProvider {
+final class ReplicatedVehicleStateStore(system: ExtendedActorSystem) extends DurableStateStoreProvider {
 
   val stateReplicator = {
     val to = 5.seconds
-    // akka://order-management/user/replicator
+    // akka://location-tracker/user/replicator
     val DataReplicatorPath = RootActorPath(system.deadLetters.path.address) / "user" / "replicator"
     Await.result(system.actorSelection(DataReplicatorPath).resolveOne(to), to)
   }
 
   override def scaladslDurableStateStore(): akka.persistence.state.scaladsl.DurableStateStore[Any] =
-    new akka.persistence.state.scaladsl.DurableStateUpdateStore[VehicleStatePB]() {
+    new akka.persistence.state.scaladsl.DurableStateUpdateStore[Vehicle.State]() {
 
       val refResolver = ActorRefResolver(system.toTyped)
       val replicaId   = akka.cluster.Cluster(system).selfMember.uniqueAddress
@@ -38,11 +38,44 @@ final class ReplicatedMMapApi(system: ExtendedActorSystem) extends DurableStateS
       override def upsertObject(
         vehicleId: String,
         revision: Long,
-        vehicle: VehicleStatePB,
+        vehicle: Vehicle.State,
         tag: String
       ): Future[Done] = {
-        val replyTo = refResolver.resolveActorRef[VehicleReply](vehicle.replyTo)
-        (stateReplicator ? Update(
+        // val replyTo = refResolver.resolveActorRef[VehicleReply](vehicle.replyTo)
+        val respondee = refResolver.resolveActorRef[Any](vehicle.replyTo)
+        val location  = com.rides.domain.types.protobuf.Location(vehicle.lat, vehicle.lon)
+
+        if (respondee.path.address.hasLocalScope) {
+          stateReplicator.tell(
+            Update(
+              ReplicatedVehicle.Key(vehicleId),
+              ReplicatedVehicle(vehicle.withVehicleId(vehicleId.toLong)),
+              WriteLocal,
+              Some((vehicleId.toLong, revision, location))
+            )(_.update(vehicle.withReplyTo(""), replicaId, revision)),
+            respondee.toClassic
+          )
+          Future.successful(akka.Done)
+        } else {
+          // TODO: not sure if I need this
+          val p = Promise[akka.Done]
+          stateReplicator.tell(
+            Update(
+              ReplicatedVehicle.Key(vehicleId),
+              ReplicatedVehicle(vehicle.withVehicleId(vehicleId.toLong)),
+              WriteLocal,
+              Some((vehicleId.toLong, revision, location))
+            ) { ddata =>
+              val updated = ddata.update(vehicle.withReplyTo(""), replicaId, revision)
+              p.trySuccess(akka.Done)
+              updated
+            },
+            respondee.toClassic
+          )
+          p.future
+        }
+
+        /*(stateReplicator ? Update(
           ReplicatedVehicle.Key(vehicleId),
           ReplicatedVehicle(vehicle.withVehicleId(vehicleId.toLong)),
           WriteLocal
@@ -60,17 +93,17 @@ final class ReplicatedMMapApi(system: ExtendedActorSystem) extends DurableStateS
               com.rides.Versions(revision, revision)
             )
           )
-        )
+        )*/
       }
 
-      override def getObject(persistenceId: String): Future[GetObjectResult[VehicleStatePB]] =
+      override def getObject(persistenceId: String): Future[GetObjectResult[Vehicle.State]] =
         attemptGet(stateReplicator, persistenceId, readCL)
 
       private def attemptGet(
         replicator: ActorRef,
         persistenceId: String,
         rc: ReadConsistency
-      ): Future[GetObjectResult[VehicleStatePB]] = {
+      ): Future[GetObjectResult[Vehicle.State]] = {
         val Key = ReplicatedVehicle.Key(persistenceId)
         (replicator ? Get(Key, rc))(to).flatMap {
           case r @ GetSuccess(_, _) =>

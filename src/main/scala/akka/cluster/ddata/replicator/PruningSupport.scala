@@ -132,7 +132,7 @@ trait PruningSupport { _: Actor with ActorLogging =>
                         init(p.key, envelope, removed, selfUniqueAddress, self)
                       case Some(PruningInitialized(owner, _)) if owner != selfUniqueAddress =>
                         // re-init pruning on this member
-                        log.warning("Re-init pruning: s:{} | o:{} | r:{} ", selfUniqueAddress, owner, removed)
+                        // log.warning("Re-init pruning: s:{} | o:{} | r:{} ", selfUniqueAddress, owner, removed)
                         reInitCnt.incrementAndGet()
                         init(p.key, envelope, removed, selfUniqueAddress, self)
                       case Some(PruningInitialized(owner, _)) =>
@@ -171,28 +171,25 @@ trait PruningSupport { _: Actor with ActorLogging =>
                   pruningInitiator == selfUniqueAddress && (allMembers.isEmpty || allMembers
                     .forall(n => seen(n.address)))
                 ) {
-                  log.warning(
+                  /*log.warning(
                     "*** PerformPruningAsync {}, {}, AllMembers[{}], Seen:[{}]",
                     key,
                     removedAddress,
                     allMembers,
                     seen.mkString(",")
-                  )
-
-                  /*if (ThreadLocalRandom.current().nextDouble() < .1)
-                  log.warning("Step 2. Put pruning marker {}: {}", key, removedAddress)*/
+                  )*/
 
                   cntr.incrementAndGet()
                   val pruned = envelope.prune(removedAddress, pruningPerformed)
                   self ! PruningSupport.PruningStep(key, pruned, removedAddress, PruningSupport.PruningAction.Performed)
                 } else {
-                  log.warning(
+                  /*log.warning(
                     "PruningInitiator:{} Others:[{}] Seen:[{}] Bool:{}",
                     pruningInitiator,
                     allMembers.mkString(","),
                     seen.mkString(","),
                     allMembers.forall(n => seen(n.address))
-                  )
+                  )*/
                 }
               case _ =>
             }

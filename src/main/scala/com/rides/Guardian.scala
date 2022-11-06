@@ -1,18 +1,31 @@
 package com.rides
 
+import akka.actor
 import akka.actor.RootActorPath
+import akka.actor.typed.scaladsl.AskPattern.Askable
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.scaladsl.adapter.{TypedActorContextOps, TypedActorSystemOps}
-import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.{ActorRef, Behavior, SupervisorStrategy}
 import akka.cluster.Member
 import akka.cluster.ddata.durable.raf.RafSerializer
 import akka.cluster.ddata.{MMapReader, ReplicatorSettings, SelfUniqueAddress}
-import akka.cluster.sharding.typed.ClusterShardingSettings
+import akka.cluster.sharding.{AllocationStrategyLogger, ShardCoordinator}
+import akka.cluster.sharding.ShardCoordinator.ShardAllocationStrategy
+import akka.cluster.sharding.ShardRegion.{CurrentShardRegionState, ShardId}
+import akka.cluster.sharding.external.{ExternalShardAllocation, ExternalShardAllocationStrategy}
+import akka.cluster.sharding.external.scaladsl.ExternalShardAllocationClient
+import akka.cluster.sharding.typed.{ClusterShardingSettings, GetShardRegionState}
 import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity}
-import akka.cluster.typed.SelfUp
-import akka.persistence.typed.PersistenceId
-import com.rides.domain.VehicleCmd
+import akka.cluster.typed.{ClusterSingleton, SelfUp, SingletonActor}
 
+import java.math.BigInteger
+import scala.concurrent.Future
+//import akka.persistence.typed.PersistenceId
+import com.rides.domain.VehicleCmd
+import com.rides.state.{Vehicle, VehicleRange}
+
+import java.nio.ByteBuffer
+import java.util.Random
 import scala.collection.immutable
 import scala.concurrent.duration.DurationInt
 
@@ -70,13 +83,17 @@ object Guardian {
               .getConfig("app.replicator.distributed-data")
               .withFallback(config.getConfig("akka.cluster.distributed-data"))
           }
-          val setting = ReplicatorSettings(replicatorCfg)
-
+          val setting    = ReplicatorSettings(replicatorCfg)
           val classicCtx = new TypedActorContextOps(ctx).toClassic
 
           // akka://rides/user/replicator
+          // TODO: try ctx.system.systemActorOf()
           val ref =
             classicCtx.actorOf(
+              // akka.cluster.ddata.replicator.DDataReplicator2.props(sharedMemoryMap, setting), //VehicleRange
+
+              // TODO:
+              // akka.cluster.ddata.replicator.DDataReplicatorRocksDB.props(sharedMemoryMap, setting)
               akka.cluster.ddata.replicator.DDataReplicator.props(sharedMemoryMap, setting),
               "replicator"
             )
@@ -94,49 +111,84 @@ object Guardian {
                |""".stripMargin
           )
 
+          // Not real usage here, just for logging purposes.
           ctx.spawn(MMapReader(sharedMemoryMap), "mmap-reader")
+
+          /*def newAllocationStrategy() = {
+            val leastShardAllocationNew: akka.cluster.sharding.internal.LeastShardAllocationStrategy =
+              ShardAllocationStrategy
+                .leastShardAllocationStrategy(VehicleRange.NumOfShards / 3, 1)
+                .asInstanceOf[akka.cluster.sharding.internal.LeastShardAllocationStrategy]
+            //new LeastShardAllocationStrategyWithLogger(leastShardAllocationNew, classicSystem)
+          }*/
+
+          /*val array = new Array[Byte](256)
+          val random = new Random()
+          random.nextBytes(array)*/
+
+          // new one.nio.util.ByteArrayBuilder().append()
+          // one.nio.util.Hex.toHex(67L)
+
+          // ByteBuffer.allocate(8).putLong(3434352367L).array()
+          // BigInteger.valueOf(3434352367L).toByteArray()
+          /*
+          val Fingerprint64 = com.google.common.hash.Hashing.farmHashFingerprint64()
+          Fingerprint64.hashBytes(ByteBuffer.allocate(8).putLong(3434352367L).array()).asLong()
+          Fingerprint64.hashLong(3434352367L).asLong()
+          Fingerprint64.hashBytes("aaa".getBytes()).asLong()
+           */
 
           val shardRegion: ActorRef[VehicleCmd] =
             ClusterSharding(ctx.system).init(
-              Entity(typeKey = VehicleStateBased.TypeKey) { entityCtx =>
-                VehicleStateBased(PersistenceId.ofUniqueId(entityCtx.entityId))
+              Entity(typeKey = Vehicle.TypeKey) { entityCtx =>
+                Vehicle(
+                  entityCtx.entityId.toLong
+                    // PersistenceId.ofUniqueId(entityCtx.entityId)
+                )
+              // VehicleRange(PersistenceId.ofUniqueId(entityCtx.entityId))
               }
-                .withMessageExtractor(VehicleStateBased.shardingMessageExtractor())
+                .withMessageExtractor(Vehicle.shardingMessageExtractor())
+                // .withMessageExtractor(VehicleRange.shardingMessageExtractor())
                 .withStopMessage(com.rides.domain.StopEntity())
                 .withSettings(
                   ClusterShardingSettings(ctx.system)
                     .withPassivationStrategy(
                       akka.cluster.sharding.typed.ClusterShardingSettings.PassivationStrategySettings.defaults
-                        .withIdleEntityPassivation(30.seconds)
+                        .withIdleEntityPassivation(30.seconds * 6)
                     )
                     // .withStateStoreMode(StateStoreMode.byName(StateStoreModeDData.name))
                     // .withStateStoreMode(StateStoreMode.byName(StateStoreModePersistence.name))
                 )
                 /*.withAllocationStrategy(
-                  akka.cluster.sharding.ShardCoordinator.ShardAllocationStrategy
-                    .leastShardAllocationStrategy(VehicleStateBased.numberOfShards / 5, 0.2)
+                  new AllocationStrategyLogger(
+                    ShardAllocationStrategy.leastShardAllocationStrategy(VehicleRange.numOfShards / 3, 1),
+                    sys
+                  )
                 )*/
-                // try this
-                // https://doc.akka.io/docs/akka/current/typed/cluster-sharding.html?_ga=2.225099034.1493026331.1653164470-1899964194.1652800389#external-shard-allocation
-                // .withAllocationStrategy(new ExternalShardAllocationStrategy(sys, OrderManagement.TypeKey.name))
+                // .withAllocationStrategy(akka.cluster.sharding.ShardCoordinator.ShardAllocationStrategy.leastShardAllocationStrategy(Vehicle.numberOfShards / 5, 0.2))
+                .withAllocationStrategy(
+                  new akka.cluster.sharding.external.ExternalShardAllocationStrategy(sys, Vehicle.TypeKey.name)
+                )
             )
 
-          /** Looks up the replicator that's being used by [[akka.cluster.sharding.DDataShardCoordinator]]
-            */
-          val DDataShardReplicatorPath =
-            RootActorPath(sys.deadLetters.path.address) / "system" / "sharding" / "replicator"
-          sys.toClassic
-            .actorSelection(DDataShardReplicatorPath)
-            .resolveOne(5.seconds)
-            .foreach { ddataShardReplicator =>
-              akka.cluster.utils
-                .shardingStateChanges(ddataShardReplicator, sys, cluster.selfMember.address.host.getOrElse("local"))
-            }(sys.executionContext)
+          // Should start it on each node
+          val client: ExternalShardAllocationClient =
+            ExternalShardAllocation(ctx.system).clientFor(Vehicle.TypeKey.name)
+
+          ClusterSingleton(ctx.system)
+            .init(
+              SingletonActor(
+                Behaviors
+                  .supervise(ShardRebalancer(client))
+                  .onFailure[Exception](SupervisorStrategy.resume.withLoggingEnabled(true)),
+                "shard-rebalancer"
+              ).withStopMessage(ShardRebalancer.Shutdown)
+            )
 
           import akka.cluster.Implicits.*
-          ctx.log.warn("★ ★ ★ 1. {} ShardRegion: {}", VehicleStateBased.TypeKey.name, shardRegion.path)
+          ctx.log.warn("★ ★ ★ 1. {} ShardRegion: {}", Vehicle.TypeKey.name, shardRegion.path)
           ctx.log.warn(
-            "★ ★ ★ 2. Singleton_oldest(DDataShardCoordinator):{}. Leader:{}",
+            "★ ★ ★ 2. Singleton(DDataShardCoordinator):{}. Leader:{}",
             membersByAge.head.details,
             cluster.state.leader.getOrElse("none")
           )
@@ -145,7 +197,13 @@ object Guardian {
           import embroidery._
           ctx.log.info("Location-Tracker".toAsciiArt)
 
-          Bootstrap(shardRegion, sharedMemoryMap, ref, dockerHostName, grpcPort)(ctx.system, cluster)
+          Bootstrap(
+            shardRegion,
+            sharedMemoryMap,
+            ref,
+            dockerHostName,
+            grpcPort
+          )(ctx.system, cluster)
           Behaviors.same
         }
       }

@@ -260,7 +260,7 @@ final class DDataReplicator(
           msg match {
             case Read(key, _) =>
               val local = getData(key)
-              println(s"Read($key)=$local")
+              // println(s"Read($key)=$local")
               sender() ! ReadResult(local)
             case Write(key, envelope, _) =>
               receiveWrite(key, envelope, sender())
@@ -322,7 +322,7 @@ final class DDataReplicator(
 
     case PruningSupport.DeleteObsoletePruningPerformed(key, envelope, removedAddresses) =>
       // if (ThreadLocalRandom.current().nextDouble() < .1)
-      log.warning("Pruning:Step 3. [DeleteObsoletePruningPerformed {}] from {}", removedAddresses.mkString(","), key)
+      // log.warning("Pruning:Step 3. [DeleteObsoletePruningPerformed {}] from {}", removedAddresses.mkString(","), key)
 
       setData(key, envelope)
       removedAddresses.foreach(ua => removedNodes -= ua)
@@ -512,6 +512,7 @@ final class DDataReplicator(
 
     // TODO: Handle one.nio.mem.OutOfMemoryException
     sharedMemoryMap.put(vehicleId2Long(key), new SharedMemoryValue(envelope, digest0))
+    // log.warning("FLUSH ({})", envelope.data)
     envelope
   }
 
@@ -614,7 +615,7 @@ final class DDataReplicator(
 
                 // akka.util.TypedMultiMap.empty[Int, String]
                 val status = Status(digests, 0, 0, toSystemUid, selfFromSystemUid)
-                to tell (status, replicator)
+                to.tell(status, replicator)
               }
             } else {
               log.info("Send Status: Start from the beginning")
