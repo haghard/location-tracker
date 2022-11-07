@@ -13,7 +13,7 @@ lazy val root = (project in file("."))
   .enablePlugins(AkkaGrpcPlugin)
 
 val AkkaPersistenceR2dbcVersion = "1.0.0"
-val AkkaProjectionVersion = "1.3.0" //"1.2.5"
+val AkkaProjectionVersion       = "1.3.0" //"1.2.5"
 
 libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-slf4j"  % AkkaVersion,
@@ -47,17 +47,15 @@ libraryDependencies ++= Seq(
   //https://github.com/akka/akka-projection/blob/main/samples/grpc/shopping-cart-service-scala/build.sbt
   //https://www.lightbend.com/blog/ditch-the-message-broker-go-faster
 
-
   // 4. Querying and publishing data from Akka Persistence
-  "com.typesafe.akka" %% "akka-persistence-query" % AkkaVersion,
+  //"com.typesafe.akka" %% "akka-persistence-query" % AkkaVersion,
 
   //"com.lightbend.akka" %% "akka-projection-r2dbc" % AkkaPersistenceR2dbcVersion,
-  "com.lightbend.akka" %% "akka-projection-grpc" % AkkaProjectionVersion,
-  "com.lightbend.akka" %% "akka-projection-durable-state" % AkkaProjectionVersion,
+  //"com.lightbend.akka" %% "akka-projection-grpc" % AkkaProjectionVersion,
+  //"com.lightbend.akka" %% "akka-projection-durable-state" % AkkaProjectionVersion,
 
   //"com.lightbend.akka" %% "akka-projection-eventsourced" % AkkaProjectionVersion,
   //"com.lightbend.akka" %% "akka-projection-testkit" % AkkaProjectionVersion % Test)
-
 
   //"io.rsocket" %% "rsocket" % "core"  % "1.0.0"
   //https :// github.com / rsocket / rsocket - java
@@ -123,6 +121,7 @@ dependencyOverrides ++= Seq(
   "com.typesafe.akka" %% "akka-coordination"            % AkkaVersion,
   "com.typesafe.akka" %% "akka-stream"                  % AkkaVersion,
   "com.typesafe.akka" %% "akka-cluster-tools"           % AkkaVersion,
+
   "com.typesafe.akka" %% "akka-http"                    % AkkaHttpVersion,
   "com.typesafe.akka" %% "akka-http-core"               % AkkaHttpVersion,
   "com.typesafe.akka" %% "akka-http-spray-json"         % AkkaHttpVersion,

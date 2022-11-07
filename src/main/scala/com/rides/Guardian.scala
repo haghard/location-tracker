@@ -1,31 +1,19 @@
 package com.rides
 
-import akka.actor
-import akka.actor.RootActorPath
-import akka.actor.typed.scaladsl.AskPattern.Askable
 import akka.actor.typed.scaladsl.Behaviors
-import akka.actor.typed.scaladsl.adapter.{TypedActorContextOps, TypedActorSystemOps}
+import akka.actor.typed.scaladsl.adapter.TypedActorContextOps
 import akka.actor.typed.{ActorRef, Behavior, SupervisorStrategy}
 import akka.cluster.Member
 import akka.cluster.ddata.durable.raf.RafSerializer
 import akka.cluster.ddata.{MMapReader, ReplicatorSettings, SelfUniqueAddress}
-import akka.cluster.sharding.{AllocationStrategyLogger, ShardCoordinator}
-import akka.cluster.sharding.ShardCoordinator.ShardAllocationStrategy
-import akka.cluster.sharding.ShardRegion.{CurrentShardRegionState, ShardId}
-import akka.cluster.sharding.external.{ExternalShardAllocation, ExternalShardAllocationStrategy}
+import akka.cluster.sharding.external.ExternalShardAllocation
 import akka.cluster.sharding.external.scaladsl.ExternalShardAllocationClient
-import akka.cluster.sharding.typed.{ClusterShardingSettings, GetShardRegionState}
+import akka.cluster.sharding.typed.ClusterShardingSettings
 import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity}
 import akka.cluster.typed.{ClusterSingleton, SelfUp, SingletonActor}
-
-import java.math.BigInteger
-import scala.concurrent.Future
-//import akka.persistence.typed.PersistenceId
 import com.rides.domain.VehicleCmd
-import com.rides.state.{Vehicle, VehicleRange}
+import com.rides.state.Vehicle
 
-import java.nio.ByteBuffer
-import java.util.Random
 import scala.collection.immutable
 import scala.concurrent.duration.DurationInt
 
@@ -122,28 +110,11 @@ object Guardian {
             //new LeastShardAllocationStrategyWithLogger(leastShardAllocationNew, classicSystem)
           }*/
 
-          /*val array = new Array[Byte](256)
-          val random = new Random()
-          random.nextBytes(array)*/
-
-          // new one.nio.util.ByteArrayBuilder().append()
-          // one.nio.util.Hex.toHex(67L)
-
-          // ByteBuffer.allocate(8).putLong(3434352367L).array()
-          // BigInteger.valueOf(3434352367L).toByteArray()
-          /*
-          val Fingerprint64 = com.google.common.hash.Hashing.farmHashFingerprint64()
-          Fingerprint64.hashBytes(ByteBuffer.allocate(8).putLong(3434352367L).array()).asLong()
-          Fingerprint64.hashLong(3434352367L).asLong()
-          Fingerprint64.hashBytes("aaa".getBytes()).asLong()
-           */
-
           val shardRegion: ActorRef[VehicleCmd] =
             ClusterSharding(ctx.system).init(
               Entity(typeKey = Vehicle.TypeKey) { entityCtx =>
                 Vehicle(
-                  entityCtx.entityId.toLong
-                    // PersistenceId.ofUniqueId(entityCtx.entityId)
+                  entityCtx.entityId.toLong // PersistenceId.ofUniqueId(entityCtx.entityId)
                 )
               // VehicleRange(PersistenceId.ofUniqueId(entityCtx.entityId))
               }
@@ -194,7 +165,7 @@ object Guardian {
           )
           ctx.log.warn("★ ★ ★ 3. All members by age: [{}]", membersByAge.map(_.details).mkString(","))
 
-          import embroidery._
+          import embroidery.*
           ctx.log.info("Location-Tracker".toAsciiArt)
 
           Bootstrap(

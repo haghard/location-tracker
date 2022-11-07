@@ -41,7 +41,7 @@ object Vehicle {
         }
 
       override def shardId(entityId: String): String =
-        math.abs(entityId.toLong /*.hashCode*/ % numberOfShards).toString
+        math.abs(entityId.toLong % numberOfShards).toString
 
       override def unwrapMessage(cmd: VehicleCmd): VehicleCmd = cmd
     }
