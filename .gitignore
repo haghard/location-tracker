@@ -3,3 +3,6 @@
 project/target
 project/project
 target
+/logs/server.log
+/rocks/
+/scripts/

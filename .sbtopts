@@ -1,0 +1,7 @@
+-J-Xms512M
+-J-Xmx600M
+-J-XX:MaxMetaspaceSize=384m
+-J-Xss4M
+-J-XX:+UseG1GC
+-J-XX:+PrintCommandLineFlags
+-J-XshowSettings:vm
