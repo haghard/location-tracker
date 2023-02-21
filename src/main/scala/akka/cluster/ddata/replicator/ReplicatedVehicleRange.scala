@@ -1,8 +1,9 @@
 package akka.cluster.ddata.replicator
 
 import akka.cluster.UniqueAddress
-import akka.cluster.ddata.crdt.protoc.ReplicatedVehicleRangePB
-import akka.cluster.ddata.{Key, RemovedNodePruning, ReplicatedDataSerialization}
+import akka.cluster.ddata.Key
+import akka.cluster.ddata.RemovedNodePruning
+import akka.cluster.ddata.ReplicatedDataSerialization
 import com.rides.domain.types.protobuf.VehicleRangeStatePB
 
 object ReplicatedVehicleRange {

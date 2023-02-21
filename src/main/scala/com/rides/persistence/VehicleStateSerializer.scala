@@ -3,8 +3,11 @@ package com.rides.persistence
 import akka.actor.ExtendedActorSystem
 import akka.serialization.SerializerWithStringManifest
 import com.rides.VehicleReply
-import com.rides.domain.{GetLocation, ReportLocation}
-import com.rides.domain.types.protobuf.{ShardAllocatedPB, VehicleRangeStatePB, VehicleStatePB}
+import com.rides.domain.GetLocation
+import com.rides.domain.ReportLocation
+import com.rides.domain.types.protobuf.ShardAllocatedPB
+import com.rides.domain.types.protobuf.VehicleRangeStatePB
+import com.rides.domain.types.protobuf.VehicleStatePB
 
 import java.io.NotSerializableException
 

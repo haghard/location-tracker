@@ -56,8 +56,8 @@ final class CustomClusterShardingMessageSerializer(system: ExtendedActorSystem)
       case state: akka.cluster.sharding.ShardCoordinator.Internal.State =>
         val bts = coordinatorStateToProto(state).toByteArray
         // if (ThreadLocalRandom.current().nextDouble() > 0.9)
+        // 18130 bts
         system.log.warning("a.c.s.ShardCoordinator.Internal.State: {} bts", bts.size)
-
         bts
 
       case _ =>

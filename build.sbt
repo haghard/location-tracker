@@ -1,19 +1,26 @@
 ThisBuild / version := "0.1.0"
 
 ThisBuild / scalaVersion := "2.13.10"
-val AkkaVersion = "2.6.20"        //"2.7.0"
+
+val AkkaVersion = "2.6.20"   //"2.7.0"
+
 val AkkaMngVersion  = "1.1.4"     //"1.2.0"
 val AkkaHttpVersion = "10.2.10"   //"10.4.0"
 val typesafeConfigVersion = "1.4.2"
 
 lazy val root = (project in file("."))
   .settings(
-    name := "location-tracker"
+    name := "location-tracker",
+
+    resolvers ++= Seq(
+      Resolver.defaultLocal,
+      Resolver.mavenLocal,
+      Resolver.mavenCentral,
+      Resolver.typesafeRepo("releases"),
+      "Hyperreal Repository" at "https://dl.bintray.com/edadma/maven"
+    ) ++ Resolver.sonatypeOssRepos("public") ++ Resolver.sonatypeOssRepos("snapshots") ++ Resolver.sonatypeOssRepos("releases")
   )
   .enablePlugins(AkkaGrpcPlugin)
-
-val AkkaPersistenceR2dbcVersion = "1.0.0"
-val AkkaProjectionVersion       = "1.3.0" //"1.2.5"
 
 libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-slf4j"  % AkkaVersion,
@@ -27,41 +34,35 @@ libraryDependencies ++= Seq(
   "com.lightbend.akka.management" %% "akka-management-cluster-bootstrap"  % AkkaMngVersion,
   "com.lightbend.akka.management" %% "akka-management-cluster-http"       % AkkaMngVersion,
 
-  "org.scala-lang.modules"        %% "scala-collection-compat"            % "2.8.1",
-
   //transport = aeron-udp
   "io.aeron" % "aeron-driver" % "1.40.0",
   "io.aeron" % "aeron-client" % "1.40.0",
 
-  "ch.qos.logback" % "logback-classic" % "1.4.4",
-  "org.wvlet.airframe" %% "airframe-ulid" % "22.10.4",
+  "ch.qos.logback" % "logback-classic" % "1.4.5",
+  "org.wvlet.airframe" %% "airframe-ulid" % "23.2.5",
 
-  "ru.odnoklassniki" % "one-nio" % "1.5.0",
+  "ru.odnoklassniki" % "one-nio" % "1.6.1",
   "com.github.wi101" %% "embroidery" % "0.1.1",
 
-  "org.hdrhistogram"  %   "HdrHistogram"         %  "2.1.12",
+  "org.rocksdb" % "rocksdbjni" % "7.9.2", //31 Oct 2022
 
-  "org.rocksdb" % "rocksdbjni" % "7.6.0", //31 Oct 2022
+  //https://alexandrnikitin.github.io/blog/bloom-filter-for-scala/
+  //https://hur.st/bloomfilter/
+  "com.github.alexandrnikitin" %% "bloom-filter" % "0.13.1",
 
-  //https://github.com/akka/akka-projection/releases
-  //https://github.com/akka/akka-projection/blob/main/samples/grpc/shopping-cart-service-scala/build.sbt
-  //https://www.lightbend.com/blog/ditch-the-message-broker-go-faster
+  "org.bouncycastle" % "bcprov-jdk18on"  % "1.72",
 
-  // 4. Querying and publishing data from Akka Persistence
-  //"com.typesafe.akka" %% "akka-persistence-query" % AkkaVersion,
+  //https://github.com/sebastian-alfers/akka-grpc-rich-error
+  "io.grpc" % "grpc-protobuf" % "1.53.0",
 
-  //"com.lightbend.akka" %% "akka-projection-r2dbc" % AkkaPersistenceR2dbcVersion,
-  //"com.lightbend.akka" %% "akka-projection-grpc" % AkkaProjectionVersion,
-  //"com.lightbend.akka" %% "akka-projection-durable-state" % AkkaProjectionVersion,
+  "com.twitter" %% "util-hashing" % "22.12.0",
 
-  //"com.lightbend.akka" %% "akka-projection-eventsourced" % AkkaProjectionVersion,
-  //"com.lightbend.akka" %% "akka-projection-testkit" % AkkaProjectionVersion % Test)
+  "org.scala-lang" % "scala-reflect" % scalaVersion.value,
 
-  //"io.rsocket" %% "rsocket" % "core"  % "1.0.0"
-  //https :// github.com / rsocket / rsocket - java
+  //https://github.com/RoaringBitmap/RoaringBitmap/tree/3f468dc381f20989ac8c7e8b2a3e54bc94f9c64c
+  "org.roaringbitmap" % "RoaringBitmap" % "0.9.39",
 
-  //"com.lihaoyi" % "ammonite" % "2.5.5" % "test" cross CrossVersion.full
-  "com.lihaoyi" % "ammonite" % "2.5.5-15-277624cf" % "test" cross CrossVersion.full
+  "com.lihaoyi" % "ammonite" % "2.5.8" % "test" cross CrossVersion.full
 )
 
 addCommandAlias("c", "compile")
@@ -76,9 +77,10 @@ ThisBuild / dynverSeparator := "-"
 
 Compile / scalacOptions ++= Seq(
   "-Xsource:3",
+  "-language:experimental.macros",
   "-Wnonunit-statement",
-  //"-target:14",
-  "-release:14",
+  "-target:17",
+  "-release:17",
   "-deprecation",
   "-feature",
   "-unchecked",
@@ -86,22 +88,15 @@ Compile / scalacOptions ++= Seq(
   "-Xlint"
 )
 
-Compile / javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation", "-parameters") // for Jackson
-
-
-/*
-val consoleDisabledOptions = Seq("-Xfatal-warnings", "-Ywarn-unused", "-Ywarn-unused-import")
-scalacOptions in (Compile, console) ~= (_ filterNot consoleDisabledOptions.contains)
-*/
+Compile / javacOptions ++= Seq(
+  "-Xlint:unchecked", "-Xlint:deprecation", "-parameters",
+)
 
 scalafmtOnCompile := true
 
-//run / fork := true
-
 run / fork := false
-//Global / cancelable := false // ctrl-c
 
-// akka-discovery, akka-distributed-data
+
 dependencyOverrides ++= Seq(
   "com.typesafe"      %  "config"                       % typesafeConfigVersion,
   "com.typesafe.akka" %% "akka-actor-typed"             % AkkaVersion,
@@ -127,9 +122,19 @@ dependencyOverrides ++= Seq(
   "com.typesafe.akka" %% "akka-http-spray-json"         % AkkaHttpVersion,
 )
 
+ThisBuild / scalafixDependencies += "com.github.liancheng" %% "organize-imports" % "0.6.0"
+
+Global / semanticdbEnabled := true
+Global / semanticdbVersion := scalafixSemanticdb.revision
+Global / watchAntiEntropy := scala.concurrent.duration.FiniteDuration(5, java.util.concurrent.TimeUnit.SECONDS)
+
 //test:run
 Test / sourceGenerators += Def.task {
   val file = (Test / sourceManaged).value / "amm.scala"
   IO.write(file, """object amm extends App { ammonite.Main().run() }""")
   Seq(file)
 }.taskValue
+
+addCommandAlias("c", "compile")
+addCommandAlias("r", "reload")
+addCommandAlias("sfix", "scalafix OrganizeImports; test:scalafix OrganizeImports")

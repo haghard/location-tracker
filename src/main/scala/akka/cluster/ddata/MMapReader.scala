@@ -2,13 +2,18 @@ package akka.cluster
 package ddata
 
 import akka.actor.typed.Behavior
-import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
+import akka.actor.typed.scaladsl.ActorContext
+import akka.actor.typed.scaladsl.Behaviors
 import akka.cluster.ddata.MMapReader.Protocol.Tick
 import akka.cluster.ddata.durable.raf.SharedMemoryLongMap
 
-import scala.concurrent.duration.{DurationInt, FiniteDuration}
-import scala.concurrent.{ExecutionContext, Future}
-import scala.util.{Failure, Success, Try}
+import scala.concurrent.ExecutionContext
+import scala.concurrent.Future
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.duration.FiniteDuration
+import scala.util.Failure
+import scala.util.Success
+import scala.util.Try
 
 object MMapReader {
 
@@ -98,7 +103,7 @@ object MMapReader {
         Behaviors.same
 
       case Protocol.Completed(num) =>
-        ctx.log.warn("★ ★ ★ Recovered {} keys ★ ★ ★", num)
+        ctx.log.warn("★ ★ ★ Discovered {} keys in SharedMemoryMap(MMAP) file ★ ★ ★", num)
         Behaviors.stopped
 
       case Protocol.Fail(ex) =>

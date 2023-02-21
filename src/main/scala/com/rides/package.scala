@@ -1,7 +1,8 @@
 package com
 
 import java.time.Duration as JavaDuration
-import scala.concurrent.duration.{FiniteDuration, NANOSECONDS}
+import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration.NANOSECONDS
 
 package object rides {
 

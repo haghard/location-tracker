@@ -3,8 +3,11 @@ package akka.cluster.ddata.durable.raf
 import akka.actor.typed.ActorSystem
 import akka.cluster.ddata.DurableStore.DurableDataEnvelope
 import akka.cluster.ddata.durable.raf.SharedMemoryLongMap.SharedMemoryValue
-import akka.serialization.{SerializationExtension, SerializerWithStringManifest}
-import one.nio.serial.{CalcSizeStream, DataStream, JsonReader}
+import akka.serialization.SerializationExtension
+import akka.serialization.SerializerWithStringManifest
+import one.nio.serial.CalcSizeStream
+import one.nio.serial.DataStream
+import one.nio.serial.JsonReader
 
 import java.lang
 

@@ -280,7 +280,8 @@ https://medium.com/@nishantparmar/distributed-system-design-patterns-2d20908fecf
 
 19. Merkle Trees
 Read Repair removes conflicts while serving read requests. But, if a replica falls significantly behind others, it might take a very long time to resolve conflicts.
-A replica can contain a lot of data. Naively splitting up the entire range to calculate checksums for comparison is not very feasible; there is simply too much data to be transferred. Instead, we can use Merkle trees to compare replicas of a range.
+A replica can contain a lot of data. Naively splitting up the entire range to calculate checksums for comparison is not very feasible; there is simply too much data to be transferred.
+Instead, we can use Merkle trees to compare replicas of a range.
 A Merkle tree is a binary tree of hashes, where each internal node is the hash of its two children, and each leaf node is a hash of a portion of the original data.
 
 Comparing Merkle trees is conceptually simple:

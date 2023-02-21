@@ -1,17 +1,26 @@
 package com.rides
 
 import akka.Done
-import akka.actor.typed.{ActorRef, ActorSystem}
 import akka.actor.CoordinatedShutdown
-import akka.actor.CoordinatedShutdown.{PhaseActorSystemTerminate, PhaseBeforeServiceUnbind, PhaseServiceRequestsDone, PhaseServiceStop, PhaseServiceUnbind, Reason}
-import akka.cluster.sharding.external.scaladsl.ExternalShardAllocationClient
+import akka.actor.CoordinatedShutdown.PhaseActorSystemTerminate
+import akka.actor.CoordinatedShutdown.PhaseBeforeServiceUnbind
+import akka.actor.CoordinatedShutdown.PhaseServiceRequestsDone
+import akka.actor.CoordinatedShutdown.PhaseServiceStop
+import akka.actor.CoordinatedShutdown.PhaseServiceUnbind
+import akka.actor.CoordinatedShutdown.Reason
+import akka.actor.typed.ActorRef
+import akka.actor.typed.ActorSystem
 import akka.cluster.typed.Cluster
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.model.{HttpRequest, HttpResponse}
+import akka.http.scaladsl.model.HttpRequest
+import akka.http.scaladsl.model.HttpResponse
 import com.rides.domain.VehicleCmd
+import org.rocksdb.ColumnFamilyHandle
+import org.rocksdb.RocksDB
 
 import scala.concurrent.Future
-import scala.util.{Failure, Success}
+import scala.util.Failure
+import scala.util.Success
 
 object Bootstrap {
 
@@ -20,7 +29,9 @@ object Bootstrap {
 
 final case class Bootstrap(
   shardRegion: ActorRef[VehicleCmd],
-  sharedMemoryMap: akka.cluster.ddata.durable.raf.SharedMemoryLongMap,
+  // sharedMemoryMap: akka.cluster.ddata.durable.raf.SharedMemoryLongMap,
+  db: RocksDB,
+  columnFamily: ColumnFamilyHandle,
   ddataReplicator: akka.actor.ActorRef,
   bindHost: String,
   port: Int
@@ -37,19 +48,30 @@ final case class Bootstrap(
 
   val shutdown = CoordinatedShutdown(system)
 
+  /** https://en.wikipedia.org/wiki/Little%27s_law
+    *
+    * L = λ * W L – the average number of items in a queuing system (queue size) λ – the average number of items
+    * arriving at the system per unit of time W – the average waiting time an item spends in a queuing system
+    *
+    * Question: What parallelism factor we need given throughput = 120rps and average latency = 0.05 (50millis) ?
+    *
+    * 120 * 0.05 = 6
+    */
   val grpcService: HttpRequest => Future[HttpResponse] =
     VehicleServiceHandler.withServerReflection(
       new VehicleServiceApi(
-        sharedMemoryMap,
-        ddataReplicator,
+        db,
+        columnFamily,
+        // sharedMemoryMap,
+        // ddataReplicator,
         cluster,
         VehicleApi(
           shardRegion,
           ddataReplicator,
           "api",
-          1 << 5,
-          8,
-          akka.util.Timeout.create(config.getDuration("orders-service.ask-timeout"))
+          bufferSize = 120,
+          parallelism = 6,
+          akka.util.Timeout.create(config.getDuration("location-tracker.ask-timeout"))
         )
       )
     )

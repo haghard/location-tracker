@@ -2,7 +2,8 @@ package com.rides
 
 import com.typesafe.config.ConfigFactory
 
-import java.net.{InetAddress, NetworkInterface}
+import java.net.InetAddress
+import java.net.NetworkInterface
 import scala.io.Source
 import scala.jdk.CollectionConverters.EnumerationHasAsScala
 import scala.util.Try

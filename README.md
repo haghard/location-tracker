@@ -1,18 +1,33 @@
 # Location tracker
 
+
+
 Consistency-aware durability + Causal consistency
+
+Each object is an independent CRDT (Guarantees eventual convergence of replicas)
+
+Async replication. It means that you can do writes on the primary, and it will replicate writes eventually. 
+
+A trade-off between throughput and consistency.
+
+The primary reflects some order of operations
 
 Eventual durability:
 
-1) Master-acknowledged writes.
+1) Master-acknowledged writes. For each write, the associated entity writes to its local replica, and then using gossip (asynchronously) replicates it to other replicas.
 2) Async replication (To ensure independent and simultaneous progress on various locations) makes writes eventually durable, 
-but enables only weak consistency due to data loss upon failures. If a failure arises before writes are made durable, they can be lost.
+but enables only weak consistency due to data loss upon failures. If a failure arises before writes are made durable (fully replicated), they can be lost.
 
 
 Cross-client monotonic read: Every time the system satisfies a query, the value that it returns is at least as fresh as the one returned by the previous query to any client.
 
 Key idea: Shift the point of durability from writes to reads. In other words, data is replicated and persisted before reads are served.
 
+
+
+
+
+https://github.com/phiSgr/gatling-grpc/blob/master/src/test/scala/com/github/phisgr/example/GrpcExample.scala
 
 
 ```
@@ -54,7 +69,7 @@ com.rides.VehicleService.Subscribe
 ```
 
 
-`grpcurl -d '{"vehicleId":5,"lon":1,"lat":1.1}' -plaintext 127.0.0.1:8080 com.rides.VehicleService/PostLocation`
+`grpcurl -d '{"vehicleId":1,"lon":1,"lat":1.1}' -plaintext 127.0.0.1:8080 com.rides.VehicleService/PostLocation`
 
 
 `grpcurl -d '{"vehicleId":5,"version":53}' -plaintext 127.0.0.2:8080 com.rides.VehicleService/GetCoordinates`
@@ -71,12 +86,3 @@ com.rides.VehicleService.Subscribe
 
 
 `grpcurl -d '{"vehicleId":1}' -plaintext 127.0.0.1:8080 com.rides.VehicleService/Subscribe`
-
-
-### TODOs
-
-1. Borrowing an identity
-
-a) Transient nodes borrow an `identity` (a dot) from permanent nodes.
-
-b) Transient nodes use that `identity`(dot) when it updates `ReplicatedVehiclePB`.

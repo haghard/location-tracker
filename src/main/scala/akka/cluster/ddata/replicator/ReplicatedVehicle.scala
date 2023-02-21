@@ -1,7 +1,9 @@
 package akka.cluster.ddata.replicator
 
 import akka.cluster.UniqueAddress
-import akka.cluster.ddata.{Key, RemovedNodePruning, ReplicatedDataSerialization}
+import akka.cluster.ddata.Key
+import akka.cluster.ddata.RemovedNodePruning
+import akka.cluster.ddata.ReplicatedDataSerialization
 import com.rides.domain.types.protobuf.VehicleStatePB
 
 object ReplicatedVehicle {
@@ -51,14 +53,19 @@ object ReplicatedVehicle {
       with ReplicatedDataSerialization
 }
 
-/** Each node sequentially numbers the updates that it generates, and so the set of updates that a node has delivered
+/** https://martinfowler.com/articles/patterns-of-distributed-systems/versioned-value.html
+  *
+  * Each node sequentially numbers the updates that it generates, and so the set of updates that a node has delivered
   * can be summarised by remembering just the highest sequence number from each node.
   */
 final case class ReplicatedVehicle(
   state: VehicleStatePB,
-  // writerEpoch: Long, //https://martinfowler.com/articles/patterns-of-distributed-systems/generation.html
-  version: Long = 0L,                                    // version only moves forward
-  replicationState: Map[UniqueAddress, Long] = Map.empty // which replicas have seen which versions
+  version: Long = 0L,
+  // Maintain a monotonically increasing version number indicating the version of the value.
+  // Store a version number with each value. The version number is incremented for every update.
+  replicationState: Map[UniqueAddress, Long] =
+    Map.empty // which replicas have seen which versions (Replication context)
+  // replicas: Set[UniqueAddress] = Set.empty, //Set of replicas participating in a write
 ) extends akka.cluster.ddata.ReplicatedData
     with ReplicatedDataSerialization
     with RemovedNodePruning { self =>
@@ -66,7 +73,7 @@ final case class ReplicatedVehicle(
   type T = ReplicatedVehicle
 
   def update(vehicle: VehicleStatePB, selfUniqueAddress: akka.cluster.UniqueAddress, revision: Long): T =
-    self.copy(vehicle, /*writerEpoch,*/ revision, self.replicationState.updated(selfUniqueAddress, revision))
+    self.copy(vehicle, revision, self.replicationState.updated(selfUniqueAddress, revision))
 
   // isReplicated|isDurable
   def isDurable(
@@ -88,6 +95,24 @@ final case class ReplicatedVehicle(
         self.copy(replicationState = replicationState.updated(selfMember, self.version))
     }
 
+  // format: off
+  /**
+    *
+    * Requires a bounded semilattice (or idempotent commutative monoid).
+    * Monotonic semi-lattice + merge = Least Upper Bound.
+    *
+    * 1. We rely on commutativity to ensure that machine A merging with machine B yields the same result as machine
+    * B merging with machine A. (op(A,B) == op(B,A))) (order doesn't matter)
+    *
+    * 2. We need associativity to ensure we obtain the correct result when three or more machines are merging data.
+    * (op(A,op(B,C)) == op(op(A,B),C)) (batching doesn't matter)
+    *
+    * 3. We need an identity element to initialise empty register.
+    *
+    * 4. Finally, we need idempotency, to ensure that if two machines hold the same data in a per-machine,
+    * merging them will not lead to an incorrect result.
+    */
+  // format: on
   override def merge(that: ReplicatedVehicle): ReplicatedVehicle = {
     var merged = that.replicationState
     for ((key, thisVersion) <- self.replicationState)
@@ -102,7 +127,6 @@ final case class ReplicatedVehicle(
 
     self.copy(
       if (self.version < that.version) that.state else self.state,
-      // self.writerEpoch,
       self.version.max(that.version),
       merged
     )
@@ -125,9 +149,9 @@ final case class ReplicatedVehicle(
   override def pruningCleanup(removedNode: UniqueAddress): T = {
     val updated = replicationState - removedNode
     // println(s"PruningCleanup:$removedNode")
-    self.copy(replicationState = updated)
+    self.copy( /*version = self.version + 1,*/ replicationState = updated)
   }
 
   override def toString() =
-    s"RVehicle(${state.toProtoString},$version,${replicationState.mkString(",")})"
+    s"Vehicle(${state.toProtoString},$version,${replicationState.mkString(",")})"
 }

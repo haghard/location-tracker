@@ -1,9 +1,16 @@
 package akka.cluster.ddata.replicator
 
-import akka.actor.{Actor, ActorLogging, ActorRef, ActorSelection, Props, Stash, Timers}
+import akka.actor.Actor
+import akka.actor.ActorLogging
+import akka.actor.ActorRef
+import akka.actor.ActorSelection
+import akka.actor.Props
+import akka.actor.Stash
+import akka.actor.Timers
 import akka.cluster.ClusterEvent.*
 import akka.cluster.*
-import akka.cluster.ddata.Key.{KeyId, KeyR}
+import akka.cluster.ddata.Key.KeyId
+import akka.cluster.ddata.Key.KeyR
 import akka.cluster.ddata.*
 import akka.cluster.ddata.durable.raf.SharedMemoryLongMap.SharedMemoryValue
 import akka.cluster.ddata.replicator.DDataReplicator.vehicleId2Long
@@ -15,14 +22,19 @@ import one.nio.async.AsyncExecutor
 
 import java.io.RandomAccessFile
 import java.security.MessageDigest
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
-import java.util.concurrent.{CompletableFuture, ThreadLocalRandom}
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ThreadLocalRandom
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.immutable
 import scala.collection.immutable.TreeSet
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.Duration
+import scala.util.Failure
+import scala.util.Success
+import scala.util.Try
+import scala.util.Using
 import scala.util.control.NonFatal
-import scala.util.{Failure, Success, Try, Using}
 
 object DDataReplicator {
 

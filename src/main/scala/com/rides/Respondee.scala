@@ -1,13 +1,18 @@
 package com.rides
 
-import akka.actor.typed.{Behavior, PostStop}
+import akka.actor.typed.Behavior
+import akka.actor.typed.PostStop
 import akka.actor.typed.scaladsl.Behaviors
-import akka.cluster.ddata.Replicator.{UpdateFailure, UpdateResponse, UpdateSuccess, UpdateTimeout}
+import akka.cluster.ddata.Replicator.UpdateFailure
+import akka.cluster.ddata.Replicator.UpdateResponse
+import akka.cluster.ddata.Replicator.UpdateSuccess
+import akka.cluster.ddata.Replicator.UpdateTimeout
 
 import scala.concurrent.Promise
-import scala.concurrent.duration.{Duration, FiniteDuration}
+import scala.concurrent.duration.Duration
+import scala.concurrent.duration.FiniteDuration
 
-object ReplicatorRespondee {
+object Respondee {
 
   def apply(
     reqId: String,

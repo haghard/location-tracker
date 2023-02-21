@@ -1,11 +1,16 @@
 package akka.cluster.ddata
 
-import akka.actor.{ActorRef, Address}
-import akka.cluster.{Member, UniqueAddress}
+import akka.actor.ActorRef
+import akka.actor.Address
+import akka.cluster.Member
+import akka.cluster.UniqueAddress
 import akka.cluster.ddata.Replicator.Internal.*
 import akka.cluster.ddata.protobuf.SerializationSupport
 import akka.cluster.ddata.protobuf.msg.ReplicatorMessages as dm
-import akka.cluster.sharding.ShardCoordinator.Internal.{ShardHome, ShardHomeAllocated, ShardHomes, State}
+import akka.cluster.sharding.ShardCoordinator.Internal.ShardHome
+import akka.cluster.sharding.ShardCoordinator.Internal.ShardHomeAllocated
+import akka.cluster.sharding.ShardCoordinator.Internal.ShardHomes
+import akka.cluster.sharding.ShardCoordinator.Internal.State
 import akka.remote.ByteStringUtils
 import akka.serialization.Serialization
 import akka.util.ByteString as AkkaByteString
@@ -61,6 +66,7 @@ trait ProtocDDataSupport extends SerializationSupport {
     Status(
       status.getEntriesList.asScala.iterator
         .map(e => e.getKey -> AkkaByteString.fromArrayUnsafe(e.getDigest.toByteArray()))
+        // .map(e => e.getKey -> akka.util.ByteString(e.getDigest.toByteArray()))
         .toMap,
       status.getChunk,
       status.getTotChunks,

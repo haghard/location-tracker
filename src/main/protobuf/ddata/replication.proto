@@ -43,3 +43,13 @@ message ReplicatedVehicleRangePB {
   //Dots and causal context
   repeated Dot dots = 3; //causal context (what version what member has seen)
 }
+
+message CellPB {
+  int32 count=1;
+  int64 idSum=2;
+  int32 hashSum=3;
+}
+
+message CellsPB {
+  repeated CellPB cells = 1;
+}

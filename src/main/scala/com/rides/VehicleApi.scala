@@ -2,25 +2,37 @@ package com.rides
 
 import akka.Done
 import akka.actor.CoordinatedShutdown
-import akka.actor.typed.{ActorRef, ActorRefResolver, ActorSystem}
+import akka.actor.typed.ActorRef
+import akka.actor.typed.ActorRefResolver
+import akka.actor.typed.ActorSystem
+import akka.cluster.ddata.Replicator.Get
+import akka.cluster.ddata.Replicator.GetFailure
+import akka.cluster.ddata.Replicator.GetSuccess
+import akka.cluster.ddata.Replicator.NotFound
+import akka.cluster.ddata.Replicator.ReadMajority
+import akka.cluster.ddata.Replicator.UpdateResponse
+import akka.cluster.ddata.replicator.ReplicatedVehicle
+import akka.grpc.GrpcServiceException
+import akka.pattern.ask
 import akka.stream.QueueOfferResult.Dropped
 import akka.stream.QueueOfferResult.Enqueued
 import akka.stream.*
-import akka.stream.scaladsl.{Flow, Keep, Sink, Source}
+import akka.stream.scaladsl.Flow
+import akka.stream.scaladsl.Keep
+import akka.stream.scaladsl.Sink
+import akka.stream.scaladsl.Source
+import com.rides.domain.GetLocation
+import com.rides.domain.ReportLocation
+import com.rides.domain.StopEntity
+import com.rides.domain.VehicleCmd
+import io.grpc.Status
 
 import scala.concurrent.Future
 import scala.concurrent.Promise
 import scala.concurrent.duration.Duration
 import scala.util.control.NoStackTrace
-import VehicleApi.*
-import akka.grpc.GrpcServiceException
-import com.rides.domain.{GetLocation, ReportLocation, StopEntity, VehicleCmd}
-import io.grpc.Status
-import akka.cluster.ddata.Replicator.{Get, GetFailure, GetSuccess, NotFound, ReadMajority}
-import akka.cluster.ddata.replicator.ReplicatedVehicle
-import akka.pattern.ask
 
-import akka.cluster.ddata.Replicator.UpdateResponse
+import VehicleApi.*
 
 object VehicleApi {
 
@@ -63,14 +75,14 @@ final class VehicleApi private (
       .via(
         Flow[(ReportLocation, Promise[Option[VehicleReply]], ActorRef[UpdateResponse[_]])]
           .withAttributes(Attributes.inputBuffer(0, 0))
-          .mapAsync(parallelism) { case (cmd, p, respondee) =>
+          .mapAsyncUnordered(parallelism) { case (cmd, p, respondee) =>
             cmd match {
               case cmd: ReportLocation =>
                 shardRegion.tell(cmd.withReplyTo(actorRefResolver.toSerializationFormat(respondee)))
                 p.future
             }
           }
-          .named("vehicle-api")
+          .named("location-tracker-api")
       )
       .toMat(Sink.ignore)(Keep.both)
       .addAttributes(ActorAttributes.supervisionStrategy(resume)) // triggers if mapAsyncUnordered(f) fails
@@ -91,7 +103,7 @@ final class VehicleApi private (
       case post: ReportLocation =>
         val p = Promise[Option[VehicleReply]]()
         val respondee: ActorRef[akka.cluster.ddata.Replicator.UpdateResponse[_]] =
-          system.systemActorOf(ReplicatorRespondee(reqId, p, askTimeout.duration), reqId)
+          system.systemActorOf(Respondee(reqId, p, askTimeout.duration), reqId)
 
         queue.offer((post, p, respondee)) match {
           case Enqueued =>

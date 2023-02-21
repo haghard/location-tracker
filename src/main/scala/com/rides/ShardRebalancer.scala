@@ -1,20 +1,26 @@
 package com.rides
 
-import akka.actor.{Address, RootActorPath}
-import akka.actor.typed.{Behavior, DispatcherSelector}
+import akka.actor.Address
+import akka.actor.RootActorPath
+import akka.actor.typed.Behavior
+import akka.actor.typed.DispatcherSelector
 import akka.actor.typed.scaladsl.Behaviors
-import akka.cluster.ClusterEvent.{ClusterDomainEvent, MemberRemoved, MemberUp}
-import akka.cluster.Member
-import akka.cluster.sharding.external.scaladsl.ExternalShardAllocationClient
-
-import scala.collection.immutable
-import scala.concurrent.ExecutionContext
-import scala.concurrent.duration.DurationInt
-import akka.cluster.sharding.ShardRegion.ShardId
 import akka.actor.typed.scaladsl.adapter.*
+import akka.cluster.ClusterEvent.ClusterDomainEvent
+import akka.cluster.ClusterEvent.MemberRemoved
+import akka.cluster.ClusterEvent.MemberUp
+import akka.cluster.Member
+import akka.cluster.sharding.ShardRegion.ShardId
+import akka.cluster.sharding.external.scaladsl.ExternalShardAllocationClient
+import com.twitter.hashing.ConsistentHashingDistributor
+import com.twitter.hashing.HashNode
 
 import java.security.MessageDigest
 import java.util.Base64
+import scala.collection.immutable
+import scala.concurrent.ExecutionContext
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.duration.FiniteDuration
 import scala.util.Try
 
 /** https://bartoszsypytkowski.com/hash-partitions/s
@@ -31,6 +37,8 @@ import scala.util.Try
   * [[com.google.common.hash.Hashing.consistentHash]] hashing function is fast and provides good distribution.
   * Consistent hashing applies a hash function to not only the identity of your data, but also the nodes within your
   * cluster that are operating on that data.
+  *
+  * Use cases: Colocate Tenant/Users, TaxPayer/Asset/Liability, or StartSchema(Fact/Dimentions)
   */
 object ShardRebalancer {
 
@@ -43,6 +51,40 @@ object ShardRebalancer {
 
   def base64Decode(s: String): Option[Array[Byte]] =
     Try(Base64.getUrlDecoder.decode(s)).toOption
+
+  private def updateShardLocations1(
+    members: immutable.SortedSet[Member],
+    shards: Set[akka.cluster.sharding.ShardRegion.ShardId],
+    client: ExternalShardAllocationClient
+  )(implicit log: org.slf4j.Logger) = {
+    val shardPlacement: Map[ShardId, Address] = {
+      val ring = akka.routing.ConsistentHash[Member](Iterable.from(members.iterator), 5)
+      shards.foldLeft(Map.empty[ShardId, Address]) { (acc, shardId) =>
+        acc + (shardId -> ring.nodeFor(shardId).address)
+      }
+    }
+    println(s"Placement: [${shardPlacement.groupMap(_._2)(_._1).mkString(",")}]")
+    client.updateShardLocations(shardPlacement)
+  }
+
+  private def updateShardLocations2(
+    members: immutable.SortedSet[Member],
+    shards: Set[akka.cluster.sharding.ShardRegion.ShardId],
+    client: ExternalShardAllocationClient
+  )(implicit log: org.slf4j.Logger) = {
+    import akka.cluster.Implicits.*
+    val shardPlacement: Map[ShardId, Address] = {
+      val array = Vector.from(members.iterator)
+      log.warn("Shards:[{}]", array.map(_.addressWithIncNum).mkString(","))
+      shards.foldLeft(Map.empty[ShardId, Address]) { (acc, shardId) =>
+        // If your buckets change from [alpha, bravo, charlie] to [bravo, charlie], it will assign all the old alpha traffic to bravo and all the old bravo traffic to charlie,
+        // rather than letting bravo keep its traffic.
+        acc + (shardId -> array(com.google.common.hash.Hashing.consistentHash(shardId.toLong, array.size)).address)
+      }
+    }
+    println(s"Placement: [${shardPlacement.groupMap(_._2)(_._1).mkString(",")}]")
+    client.updateShardLocations(shardPlacement)
+  }
 
   private def updateShardLocations(
     members: immutable.SortedSet[Member],
@@ -57,31 +99,46 @@ object ShardRebalancer {
       val sb = new StringBuilder()
       val it = members.iterator
       while (it.hasNext)
-        sb.append(it.next().addressWithNum).append(",")
+        sb.append(it.next().addressWithIncNum).append(",")
 
       log.warn("UpdateShardLocations: [{}] Shards:[{}]", sb.toString(), shards.mkString(","))
+      // To calculate a checksum, a cryptographic hash function like MD5, SHA-1, SHA-256, SHA3-256, or SHA-512 is used
       val membersDigest = MessageDigest.getInstance("SHA3-256").digest(sb.toString().getBytes)
+      val array         = Vector.from(members.iterator)
+      log.warn("Shards:[{}] Digest:{}", array.map(_.addressWithIncNum).mkString(","), base64Encode(membersDigest))
 
-      val array = Vector.from(members.iterator)
-      log.warn("Shards:[{}] Digest:{}", array.map(_.addressWithNum).mkString(","), base64Encode(membersDigest))
-
-      // val ring = akka.routing.ConsistentHash[Member](Iterable.from(members.iterator), 5)
       shards.foldLeft(Map.empty[ShardId, Address]) { (acc, shardId) =>
-        // acc + (shardId -> ring.nodeFor(shardId).address)
+        // https://github.com/twitter/util/blob/83bcbe6a857a846b29395bfd720c2985bb2602aa/util-hashing/src/test/scala/com/twitter/hashing/ConsistentHashingDistributorTest.scala
+        // 160 is the hard coded value for libmemcached, which was this input data is from
 
-        // If your buckets change from [alpha, bravo, charlie] to [bravo, charlie], it will assign all the old alpha traffic to bravo and all the old bravo traffic to charlie,
-        // rather than letting bravo keep its traffic.
-        acc + (shardId -> array(com.google.common.hash.Hashing.consistentHash(shardId.toLong, members.size)).address)
+        /*val nodes = Seq(
+          HashNode("10.0.1.1", 600, 1),
+          HashNode("10.0.1.2", 300, 2),
+          HashNode("10.0.1.3", 200, 3),
+          HashNode("10.0.1.4", 350, 4),
+          HashNode("10.0.1.5", 1000, 5),
+          HashNode("10.0.1.6", 800, 6),
+          HashNode("10.0.1.7", 950, 7),
+          HashNode("10.0.1.8", 100, 8)
+        )*/
+
+        val nodes = Vector.from(
+          members.iterator.map(member => HashNode(member.details, 100, member))
+        )
+        val ketamaDistributor = new ConsistentHashingDistributor(nodes, 160)
+        val member = ketamaDistributor.nodeForHash(com.twitter.hashing.KeyHasher.KETAMA.hashKey(shardId.getBytes))
+
+        acc + (shardId -> member.address)
       }
     }
 
-    // println(s"Placement: [${shardPlacement.groupMap(_._2)(_._1).mkString(",")}]")
-
+    println(s"Placement: [${shardPlacement.groupMap(_._2)(_._1).mkString(",")}]")
     client.updateShardLocations(shardPlacement)
   }
 
   def apply(
-    shardAllocationClient: ExternalShardAllocationClient
+    shardAllocationClient: ExternalShardAllocationClient,
+    rebalanceInterval: FiniteDuration
   ): Behavior[ClusterDomainEvent] =
     Behaviors.setup[ClusterDomainEvent] { ctx =>
       implicit val ec = ctx.system.dispatchers.lookup(DispatcherSelector.fromConfig("akka.actor.internal-dispatcher"))
@@ -118,7 +175,7 @@ object ShardRebalancer {
         }*/
 
       Behaviors.withTimers { timer =>
-        timer.startTimerWithFixedDelay(RebalanceTick, 60.seconds) // rebalance interval
+        timer.startTimerWithFixedDelay(RebalanceTick, rebalanceInterval) // 60.seconds rebalance interval
         active(immutable.SortedSet.from(cluster.state.members)(Member.ageOrdering), Set.empty)(
           shardAllocationClient,
           ctx.log,

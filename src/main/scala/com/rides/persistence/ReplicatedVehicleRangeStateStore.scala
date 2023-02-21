@@ -1,9 +1,12 @@
 package com.rides.persistence
 
 import akka.Done
+import akka.actor.ActorRef
+import akka.actor.ExtendedActorSystem
+import akka.actor.RootActorPath
 import akka.actor.typed.ActorRefResolver
-import akka.actor.typed.scaladsl.adapter.{ClassicActorSystemOps, TypedActorRefOps}
-import akka.actor.{ActorRef, ExtendedActorSystem, RootActorPath}
+import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
+import akka.actor.typed.scaladsl.adapter.TypedActorRefOps
 import akka.cluster.ddata.Replicator.*
 import akka.cluster.ddata.replicator.ReplicatedVehicleRange
 import akka.pattern.ask
@@ -12,8 +15,10 @@ import akka.persistence.state.scaladsl.GetObjectResult
 import com.rides.VehicleReply
 import com.rides.state.VehicleRange
 
+import scala.concurrent.Await
+import scala.concurrent.Future
+import scala.concurrent.Promise
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{Await, Future, Promise}
 
 final class ReplicatedVehicleRangeStateStore(system: ExtendedActorSystem) extends DurableStateStoreProvider {
 

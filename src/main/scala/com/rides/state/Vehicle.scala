@@ -1,13 +1,16 @@
 package com.rides.state
 
+import akka.actor.typed.ActorRefResolver
+import akka.actor.typed.Behavior
+import akka.actor.typed.SupervisorStrategy
 import akka.actor.typed.scaladsl.Behaviors
-import akka.actor.typed.{ActorRefResolver, Behavior, SupervisorStrategy}
 import akka.cluster.sharding.typed.ShardingMessageExtractor
 import akka.cluster.sharding.typed.scaladsl.EntityTypeKey
 import akka.persistence.typed.PersistenceId
-import akka.persistence.typed.state.scaladsl.{DurableStateBehavior, Effect}
-import com.rides.domain.types.protobuf.VehicleStatePB
+import akka.persistence.typed.state.scaladsl.DurableStateBehavior
+import akka.persistence.typed.state.scaladsl.Effect
 import com.rides.domain.*
+import com.rides.domain.types.protobuf.VehicleStatePB
 
 import scala.concurrent.duration.DurationInt
 
@@ -19,10 +22,8 @@ https://doc.akka.io/docs/akka/current/typed/durable-state/persistence.html#clust
 https://github.com/akka/akka/blob/main/akka-persistence-typed-tests/src/test/scala/akka/persistence/typed/state/scaladsl/DurableStateBehaviorReplySpec.scala
 https://github.com/akka/akka/tree/main/akka-persistence-typed-tests/src/test/scala/akka/persistence/typed/state/scaladsl
 
-
 https://doc.akka.io/docs/akka-persistence-jdbc/current/durable-state-store.html
 https://doc.akka.io/docs/akka/2.6/durable-state/persistence-query.html (DurableStateStoreRegistry)
-
  */
 
 object Vehicle {
@@ -84,8 +85,7 @@ object Vehicle {
           // Effect.delete[VehicleStatePB]()
           Effect
             .persist(updatedVehicle)
-            // .thenRun(_ => respondee.tell(???))
-            .thenRun(_ => logger.info("Persist {}", updatedVehicle.toProtoString))
+            // .thenRun(_ => logger.info("Persist {}", updatedVehicle.toProtoString))
             .thenNoReply() //
 
         case _: GetLocation =>

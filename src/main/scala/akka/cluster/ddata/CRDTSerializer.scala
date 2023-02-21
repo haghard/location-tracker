@@ -1,10 +1,14 @@
 package akka.cluster
 package ddata
 
-import akka.actor.{AddressFromURIString, ExtendedActorSystem}
-import akka.cluster.ddata.crdt.protoc.{Dot, ReplicatedVehiclePB, ReplicatedVehicleRangePB}
+import akka.actor.AddressFromURIString
+import akka.actor.ExtendedActorSystem
+import akka.cluster.ddata.crdt.protoc.Dot
+import akka.cluster.ddata.crdt.protoc.ReplicatedVehiclePB
+import akka.cluster.ddata.crdt.protoc.ReplicatedVehicleRangePB
 import akka.cluster.ddata.protobuf.ReplicatedDataSerializer
-import akka.cluster.ddata.replicator.{ReplicatedVehicle, ReplicatedVehicleRange}
+import akka.cluster.ddata.replicator.ReplicatedVehicle
+import akka.cluster.ddata.replicator.ReplicatedVehicleRange
 
 final class CRDTSerializer(system: ExtendedActorSystem)
     extends ReplicatedDataSerializer(system)
@@ -68,7 +72,10 @@ final class CRDTSerializer(system: ExtendedActorSystem)
 
       // Other CRDT LWWHashMap(51 -> akka://rides@127.0.0.2:2550, 55 -> akka://rides@127.0.0.2:2550, 50 -> akka://rides@127.0.0.1:2550, 57 -> akka://rides@127.0.0.2:2550)
       case map: LWWMap[String, String] =>
-        system.log.warning("Shard placement CRDT [{}]", map.entries.groupMap(_._2)(_._1).mkString(","))
+        system.log.warning(
+          "Shard placement CRDT [{}]",
+          map.entries.keySet.mkString(",") /*map.entries.groupMap(_._2)(_._1).mkString(",")*/
+        )
         super.toBinary(obj)
 
       case crdt =>

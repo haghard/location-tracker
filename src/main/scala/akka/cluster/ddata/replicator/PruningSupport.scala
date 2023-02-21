@@ -1,8 +1,11 @@
 package akka.cluster.ddata.replicator
 
-import akka.actor.{Actor, ActorLogging, ActorRef}
+import akka.actor.Actor
+import akka.actor.ActorLogging
+import akka.actor.ActorRef
 import akka.cluster.UniqueAddress
-import akka.cluster.ddata.PruningState.{PruningInitialized, PruningPerformed}
+import akka.cluster.ddata.PruningState.PruningInitialized
+import akka.cluster.ddata.PruningState.PruningPerformed
 import akka.cluster.ddata.RemovedNodePruning
 import akka.cluster.ddata.Replicator.Internal.DataEnvelope
 import one.nio.async.AsyncExecutor
@@ -10,12 +13,14 @@ import one.nio.async.AsyncExecutor
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicLong
 import scala.collection.SortedSet
+import scala.collection.mutable
 import scala.concurrent.duration.FiniteDuration
 
 object PruningSupport {
   case object PruningRoundFinished
 
-  final case class StartPruning(removedNodes: scala.collection.Set[UniqueAddress])
+  final case class StartPruning(addressesToRemove: scala.collection.Set[UniqueAddress])
+
   final case object PruningRoundInited
 
   sealed trait PruningAction
@@ -24,6 +29,11 @@ object PruningSupport {
     object Inited    extends PruningAction
     object Performed extends PruningAction
   }
+
+  final case class PruningSteps(action: PruningAction)
+  final case class PruningMarkerDeleted(removed: Set[UniqueAddress])
+
+  final case class PerformPruning(keysToPrune: mutable.Set[Array[Byte]])
 
   final case class PruningStep(key: String, envelope: DataEnvelope, removed: UniqueAddress, action: PruningAction)
 
@@ -204,7 +214,7 @@ trait PruningSupport { _: Actor with ActorLogging =>
   }
 
   // Any node can run this
-  def deleteObsoletePruningMarkers() = {
+  def deleteObsoletePruningMarkers(): Unit = {
     val currentTime = System.currentTimeMillis()
     sharedMemoryMap
       .performPruningAsync[DataEnvelope] { (key: String, envelope: DataEnvelope) =>

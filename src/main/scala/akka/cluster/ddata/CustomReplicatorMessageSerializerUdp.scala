@@ -1,7 +1,8 @@
 package akka.cluster.ddata
 
 import akka.actor.ExtendedActorSystem
-import akka.cluster.ddata.protobuf.{ReplicatorMessageSerializer, SerializationSupport}
+import akka.cluster.ddata.protobuf.ReplicatorMessageSerializer
+import akka.cluster.ddata.protobuf.SerializationSupport
 import akka.protobufv3.internal.CodedOutputStream
 import akka.serialization.ByteBufferSerializer
 
@@ -48,7 +49,7 @@ final class CustomReplicatorMessageSerializerUdp(system: ExtendedActorSystem)
         val protoStatus = statusToProto(s)
         system.log.warning(
           // "ToBinary: Status size {}. EntriesCount: {}. Direct: {}",
-          "ToBinary: Status [Size - {} KB. Keys - {}]",
+          "ToBinary: Status [Size - {} KB. NumOfKeys - {}]",
           protoStatus.getSerializedSize / KB,
           protoStatus.getEntriesList.size()
           // protoStatus.getEntriesList.asScala.map(_.getKey).mkString(","),
@@ -85,9 +86,12 @@ final class CustomReplicatorMessageSerializerUdp(system: ExtendedActorSystem)
     }
 
   override def fromBinary(directByteBuffer: ByteBuffer, manifest: String): AnyRef =
-    // val direct = directByteBuffer.isDirect
-    // val size = directByteBuffer.remaining
-    // system.log.warning("FromBinary: {}. Size: {}. Direct: {}", manifest, size, direct)
+    /*
+    val direct = directByteBuffer.isDirect
+    val size   = directByteBuffer.remaining
+    system.log.warning("***  FromBinary: {}. Size: {}. Direct: {}", manifest, size, direct)
+     */
+
     manifest match {
       case GossipManifest =>
         val gossip = gossipFromBinary(directByteBuffer)

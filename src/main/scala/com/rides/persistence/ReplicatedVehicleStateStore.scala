@@ -1,9 +1,12 @@
 package com.rides.persistence
 
 import akka.Done
+import akka.actor.ActorRef
+import akka.actor.ExtendedActorSystem
+import akka.actor.RootActorPath
 import akka.actor.typed.ActorRefResolver
-import akka.actor.typed.scaladsl.adapter.{ClassicActorSystemOps, TypedActorRefOps}
-import akka.actor.{ActorRef, ExtendedActorSystem, RootActorPath}
+import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
+import akka.actor.typed.scaladsl.adapter.TypedActorRefOps
 import akka.cluster.ddata.Replicator.*
 import akka.cluster.ddata.replicator.ReplicatedVehicle
 import akka.pattern.ask
@@ -12,13 +15,15 @@ import akka.persistence.state.scaladsl.GetObjectResult
 import com.rides.VehicleReply
 import com.rides.state.Vehicle
 
+import scala.concurrent.Await
+import scala.concurrent.Future
+import scala.concurrent.Promise
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{Await, Future, Promise}
 
 final class ReplicatedVehicleStateStore(system: ExtendedActorSystem) extends DurableStateStoreProvider {
 
   val stateReplicator = {
-    val to = 5.seconds
+    val to = 5.seconds // TODO:
     // akka://location-tracker/user/replicator
     val DataReplicatorPath = RootActorPath(system.deadLetters.path.address) / "user" / "replicator"
     Await.result(system.actorSelection(DataReplicatorPath).resolveOne(to), to)
@@ -30,10 +35,10 @@ final class ReplicatedVehicleStateStore(system: ExtendedActorSystem) extends Dur
       val refResolver = ActorRefResolver(system.toTyped)
       val replicaId   = akka.cluster.Cluster(system).selfMember.uniqueAddress
 
-      implicit val to = akka.util.Timeout(3.seconds)
-      implicit val ec = system.dispatcher
+      implicit val readTimeout = akka.util.Timeout(3.seconds)
+      implicit val ec          = system.dispatcher
 
-      val readCL = ReadMajority(to.duration)
+      val readCL = ReadMajority(readTimeout.duration)
 
       override def upsertObject(
         vehicleId: String,
@@ -58,6 +63,8 @@ final class ReplicatedVehicleStateStore(system: ExtendedActorSystem) extends Dur
           Future.successful(akka.Done)
         } else {
           // TODO: not sure if I need this
+
+          // mimics the remote Promise
           val p = Promise[akka.Done]
           stateReplicator.tell(
             Update(
@@ -105,7 +112,7 @@ final class ReplicatedVehicleStateStore(system: ExtendedActorSystem) extends Dur
         rc: ReadConsistency
       ): Future[GetObjectResult[Vehicle.State]] = {
         val Key = ReplicatedVehicle.Key(persistenceId)
-        (replicator ? Get(Key, rc))(to).flatMap {
+        (replicator ? Get(Key, rc))(readTimeout).flatMap {
           case r @ GetSuccess(_, _) =>
             val replicatedVehicle = r.get(Key)
             Future.successful(GetObjectResult(Some(replicatedVehicle.state), replicatedVehicle.version))

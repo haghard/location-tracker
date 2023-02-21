@@ -1,7 +1,8 @@
 package com.rides
 
 import akka.actor.typed.ActorSystem
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.Config
+import com.typesafe.config.ConfigFactory
 
 import java.io.File
 

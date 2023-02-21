@@ -43,3 +43,13 @@ message StopEntity {
   option (scalapb.message).extends = "VehicleCmd";
 }
 
+/***
+#https://softwaremill.com/hands-on-influxdb/
+message  Trade {
+  string quote=1; //bitcoin, ethereum
+  double prices=2;
+  google.protobuf.Timestamp updatedAt = 3 [(scalapb.field).no_box = true];
+}
+
+2022-07-18 09:00	prices	bitcoin	6389.06
+***/
