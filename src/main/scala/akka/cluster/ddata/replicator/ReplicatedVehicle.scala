@@ -98,7 +98,7 @@ final case class ReplicatedVehicle(
   // format: off
   /**
     *
-    * Requires a bounded semilattice (or idempotent commutative monoid).
+    * Requires a bounded semi-lattice (or idempotent commutative monoid).
     * Monotonic semi-lattice + merge = Least Upper Bound.
     *
     * 1. We rely on commutativity to ensure that machine A merging with machine B yields the same result as machine

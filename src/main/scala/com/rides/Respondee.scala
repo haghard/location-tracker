@@ -39,17 +39,17 @@ object Respondee {
                   com.rides.VehicleReply.DurabilityLevel.Local,
                   com.rides.Versions(revision.asInstanceOf[Long], revision.asInstanceOf[Long])
                 )
-                response.trySuccess(Some(r))
+                response.trySuccess(Some(r)): Unit
                 Behaviors.stopped
               case UpdateTimeout(_, _) =>
                 logger.warn("[{}] timeout: {}ms", reqId, System.currentTimeMillis() - start)
-                response.trySuccess(None)
+                response.trySuccess(None): Unit
                 Behaviors.stopped
-              case e: UpdateFailure[_] =>
+              case _: UpdateFailure[_] =>
                 Behaviors.stopped
             }
             .receiveSignal { case (_, PostStop) =>
-              response.trySuccess(None)
+              response.trySuccess(None): Unit
               Behaviors.same
             }
         }

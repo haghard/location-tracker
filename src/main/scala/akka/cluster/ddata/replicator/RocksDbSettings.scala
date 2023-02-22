@@ -7,6 +7,8 @@ object RocksDbSettings {
 
   final case class Compaction(initialFileSize: Long, blockSize: Long, writeRateLimit: Option[Long])
 
+  val parallelism = 4
+
   object Compaction {
 
     import SizeUnit._

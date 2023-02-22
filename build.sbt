@@ -69,7 +69,7 @@ addCommandAlias("c", "compile")
 addCommandAlias("r", "reload")
 
 enablePlugins(JavaAppPackaging, DockerPlugin)
-dockerBaseImage := "docker.io/library/adoptopenjdk:14-jre-hotspot"
+dockerBaseImage := "docker.io/library/adoptopenjdk:17-jre-hotspot"
 dockerUsername := sys.props.get("docker.username")
 dockerRepository := sys.props.get("docker.registry")
 dockerUpdateLatest := true
@@ -78,8 +78,8 @@ ThisBuild / dynverSeparator := "-"
 Compile / scalacOptions ++= Seq(
   "-Xsource:3",
   "-language:experimental.macros",
-  "-Wnonunit-statement",
-  "-target:17",
+  //"-Wnonunit-statement",
+  //"-target:17",
   "-release:17",
   "-deprecation",
   "-feature",
@@ -88,9 +88,7 @@ Compile / scalacOptions ++= Seq(
   "-Xlint"
 )
 
-Compile / javacOptions ++= Seq(
-  "-Xlint:unchecked", "-Xlint:deprecation", "-parameters",
-)
+Compile / javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation", "-parameters")
 
 scalafmtOnCompile := true
 

@@ -30,7 +30,7 @@ final case class TwoWayRouter[T, A, B](validation: T => A Either B) extends Grap
               case Right(v) => Some(Right(v, out1))
               case Left(v)  => Some(Left(v, out0))
             }
-            tryPush
+            tryPush()
           }
         }
       )
@@ -44,7 +44,7 @@ final case class TwoWayRouter[T, A, B](validation: T => A Either B) extends Grap
                 initialized = true
                 tryPull(in)
               }
-              tryPush
+              tryPush()
             }
           }
         )

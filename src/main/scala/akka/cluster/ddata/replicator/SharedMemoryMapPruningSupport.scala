@@ -16,22 +16,19 @@ import scala.collection.SortedSet
 import scala.collection.mutable
 import scala.concurrent.duration.FiniteDuration
 
-object PruningSupport {
+object SharedMemoryMapPruningSupport {
   case object PruningRoundFinished
 
   final case class StartPruning(addressesToRemove: scala.collection.Set[UniqueAddress])
 
-  final case object PruningRoundInited
+  final case object PruningRoundInitialized
 
   sealed trait PruningAction
 
   object PruningAction {
-    object Inited    extends PruningAction
-    object Performed extends PruningAction
+    object Initialized extends PruningAction
+    object Performed   extends PruningAction
   }
-
-  final case class PruningSteps(action: PruningAction)
-  final case class PruningMarkerDeleted(removed: Set[UniqueAddress])
 
   final case class PerformPruning(keysToPrune: mutable.Set[Array[Byte]])
 
@@ -83,7 +80,7 @@ object PruningSupport {
  * b) Replace self with a separate actor that is responsible only for pruning.
  */
 // format: on
-trait PruningSupport { _: Actor with ActorLogging =>
+trait SharedMemoryMapPruningSupport { _: Actor with ActorLogging =>
 
   def sharedMemoryMap: akka.cluster.ddata.durable.raf.SharedMemoryLongMap
 
@@ -97,7 +94,6 @@ trait PruningSupport { _: Actor with ActorLogging =>
       .collectRemovedNodesAsync { (addresses: scala.collection.Set[UniqueAddress], env: DataEnvelope) =>
         env match {
           case DataEnvelope(data: RemovedNodePruning, _, _) =>
-            // data.modifiedByNodes.filter(n => n != selfUniqueAddress && !knownNodes.contains(n))
             data.modifiedByNodes.filterNot(n => n == selfUniqueAddress || knownNodes(n))
           case _ =>
             addresses
@@ -105,8 +101,8 @@ trait PruningSupport { _: Actor with ActorLogging =>
       }
       .thenApply { removedAddresses =>
         log.warning(s"Unknown members [${removedAddresses.mkString(",")}] !")
-        self ! PruningSupport.StartPruning(removedAddresses)
-      } // TODO: what it addresses.size is too big ???
+        self ! SharedMemoryMapPruningSupport.StartPruning(removedAddresses)
+      }
 
   def initPruning(removedSet: scala.collection.immutable.Set[UniqueAddress]): Unit = {
 
@@ -119,7 +115,12 @@ trait PruningSupport { _: Actor with ActorLogging =>
     ): Unit = {
       // Put a `PruningInitialized(selfAddress)` marker in the data envelope.
       val pruningInitializedEnvelop = envelope.initRemovedNodePruning(removed, selfAddress)
-      replyTo ! PruningSupport.PruningStep(key, pruningInitializedEnvelop, removed, PruningSupport.PruningAction.Inited)
+      replyTo ! SharedMemoryMapPruningSupport.PruningStep(
+        key,
+        pruningInitializedEnvelop,
+        removed,
+        SharedMemoryMapPruningSupport.PruningAction.Initialized
+      )
     }
 
     log.warning("Pruning:Step 1. Init [{}]", removedSet.mkString(","))
@@ -130,7 +131,7 @@ trait PruningSupport { _: Actor with ActorLogging =>
       sharedMemoryMap
         .initPruningAsync[DataEnvelope](
           removedSet,
-          { p: PruningSupport.Param =>
+          { p: SharedMemoryMapPruningSupport.Param =>
             val envelope: DataEnvelope = p.envelope.asInstanceOf[DataEnvelope]
             p.removedSet.foreach { removed =>
               if (envelope.needPruningFrom(removed)) {
@@ -157,11 +158,11 @@ trait PruningSupport { _: Actor with ActorLogging =>
         )
         .thenApply { _ =>
           log.warning("Pruning:Step 1. [Initialized] = [init:{}:re-init:{}]", initCnt.get(), reInitCnt.get())
-          self ! PruningSupport.PruningRoundInited
+          self ! SharedMemoryMapPruningSupport.PruningRoundInitialized
         }
     } else {
       log.warning("Pruning:Step 1. [Initialized] = [init:0:re-init:0]")
-      self ! PruningSupport.PruningRoundInited
+      self ! SharedMemoryMapPruningSupport.PruningRoundInitialized
     }
   }
 
@@ -191,7 +192,12 @@ trait PruningSupport { _: Actor with ActorLogging =>
 
                   cntr.incrementAndGet()
                   val pruned = envelope.prune(removedAddress, pruningPerformed)
-                  self ! PruningSupport.PruningStep(key, pruned, removedAddress, PruningSupport.PruningAction.Performed)
+                  self ! SharedMemoryMapPruningSupport.PruningStep(
+                    key,
+                    pruned,
+                    removedAddress,
+                    SharedMemoryMapPruningSupport.PruningAction.Performed
+                  )
                 } else {
                   /*log.warning(
                     "PruningInitiator:{} Others:[{}] Seen:[{}] Bool:{}",
@@ -230,10 +236,10 @@ trait PruningSupport { _: Actor with ActorLogging =>
               case (acc, _) => acc
             }
             if (newEnvelope ne envelope) {
-              self ! PruningSupport.DeleteObsoletePruningPerformed(key, newEnvelope, removedAddresses)
+              self ! SharedMemoryMapPruningSupport.DeleteObsoletePruningPerformed(key, newEnvelope, removedAddresses)
             }
         }
       }
-      .thenApply(numOfKeys => self ! PruningSupport.PruningRoundFinished)
+      .thenApply(numOfKeys => self ! SharedMemoryMapPruningSupport.PruningRoundFinished)
   }
 }

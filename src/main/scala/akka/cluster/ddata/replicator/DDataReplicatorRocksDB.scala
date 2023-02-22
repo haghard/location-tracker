@@ -18,7 +18,7 @@ import akka.cluster.ddata.*
 import akka.cluster.ddata.replicator.DDataReplicator.DigestStatus
 import akka.cluster.ddata.replicator.DDataReplicatorRocksDB.DataEnvelopeManifest
 import akka.cluster.ddata.replicator.DDataReplicatorRocksDB.DataEnvelopeOps
-import akka.cluster.ddata.replicator.PruningSupport.PerformPruning
+import akka.cluster.ddata.replicator.SharedMemoryMapPruningSupport.PerformPruning
 import akka.cluster.ddata.utils.MerkleDigest
 import akka.cluster.ddata.utils.MerkleTree
 import akka.event.Logging
@@ -45,7 +45,6 @@ import org.rocksdb.RocksDB
 import org.rocksdb.WriteBatch
 import org.rocksdb.WriteOptions
 
-import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.atomic.AtomicBoolean
@@ -63,8 +62,8 @@ import scala.concurrent.duration.FiniteDuration
 import scala.util.Failure
 import scala.util.Success
 import scala.util.Try
-
 import DDataReplicatorRocksDB.*
+import com.google.common.primitives.Longs
 
 object DDataReplicatorRocksDB {
 
@@ -89,6 +88,7 @@ object DDataReplicatorRocksDB {
       .asInstanceOf[ReplicatedVehicle]
 
   def vehicleId2Long(vehicleId: String): Long =
+    // com.google.common.primitives.Longs.tryParse(vehicleId)
     java.lang.Long.parseLong(vehicleId)
 
   val NotFoundDig = Array[Byte](-1)
@@ -133,15 +133,15 @@ object DDataReplicatorRocksDB {
     duration: FiniteDuration
   ): Sink[RMsg, akka.NotUsed] =
     Flow[RMsg]
-      .conflateWithSeed(_ => (0L, 0L)) { (agg, m) =>
+      .conflateWithSeed(_ => (0L, 0L)) { case ((external, internal), m) =>
         m match {
-          case RMsg.External(_) => (agg._1 + 1L, agg._2)
-          case RMsg.Internal(_) => (agg._1, agg._2 + 1L)
+          case RMsg.External(_) => (external + 1L, internal)
+          case RMsg.Internal(_) => (external, internal + 1L)
         }
       }
       .zipWith(Source.tick(duration, duration, ()))(Keep.left)
-      .scan((0L, 0L))((agg, proj) => (agg._1 + proj._1, agg._2 + proj._2))
-      .to(Sink.foreach(acc => log.info(s"$message: [Ext:${acc._1}/Int:${acc._2}]")))
+      .scan((0L, 0L)) { case ((external, internal), (a, b)) => (external + a, internal + b) }
+      .to(Sink.foreach { case (external, internal) => log.info(s"$message: [Ext:$external/Int:$internal]") })
       .withAttributes(Attributes.inputBuffer(1, 1))
 
   // If both have elements available, prefer the 'externalSrc' when 'preferred' is 'true'
@@ -149,7 +149,7 @@ object DDataReplicatorRocksDB {
     source: Source[RMsg, akka.NotUsed],
     replicator: ActorRef,
     onUpdate: (ActorRef, KeyR, Option[ReplicatedData] => ReplicatedData, Option[Any]) => Unit,
-    writeParallelism: Int = 4
+    writeParallelism: Int
   )(implicit ec: ExecutionContext): Graph[ClosedShape, akka.NotUsed] =
     GraphDSL.create() { implicit b =>
       import GraphDSL.Implicits._
@@ -382,13 +382,14 @@ final class DDataReplicatorRocksDB(
           .mergePreferred(externalSrc, true)
           .alsoTo(showSummary("summary", log, 30.seconds)),
         self,
-        receiveUpdate
+        receiveUpdate,
+        RocksDbSettings.parallelism
       )(context.system.dispatchers.lookup(dbDispatcher))
     )
     .run()
 
-  val lastGossiped   = new AtomicReference[String](null)
-  val lastMerkleTree = new AtomicReference[String](null)
+  val lastGossiped   = new AtomicReference[Long](Long.MinValue)
+  val lastMerkleTree = new AtomicReference[Long](Long.MinValue)
 
   override def preStart(): Unit =
     cluster.subscribe(self, initialStateMode = InitialStateAsEvents, classOf[MemberEvent], classOf[ReachabilityEvent])
@@ -445,14 +446,12 @@ final class DDataReplicatorRocksDB(
         case _ =>
           msg match {
             case Read(key, _) =>
-              val maybeLocal = getData(key)
+              val maybeLocal = getData(vehicleId2Long(key))
               println(s"Read($key)=${maybeLocal.getOrElse("None")}")
               sender() ! ReadResult(maybeLocal)
             case Write(key, envelope, _) =>
-              receiveWrite(key, envelope, sender())
-            case DeltaPropagation(from, reply, deltas) =>
-              ???
-            // receiveDeltaPropagation(sender(), from, reply, deltas)
+              receiveWrite(vehicleId2Long(key), envelope, sender())
+            case _: DeltaPropagation =>
           }
       }
 
@@ -460,7 +459,7 @@ final class DDataReplicatorRocksDB(
     case Get(key, consistency, req) =>
       receiveGet(key, consistency, req)
 
-    case u @ Update(key, writeC, req) =>
+    case u @ Update(key, _, _) =>
       val replyTo = sender()
       externalQ.offer(RMsg.External(RExternal.Upd(replyTo, u))) match {
         case _: QueueCompletionResult  =>
@@ -470,7 +469,8 @@ final class DDataReplicatorRocksDB(
       }
 
     case ReadRepair(key, envelope) =>
-      receiveReadRepair(key, envelope, sender())
+      val replyTo = sender()
+      receiveReadRepair(vehicleId2Long(key), envelope, replyTo)
 
     case GossipTick => receiveGossipTick()
     case ClockTick  => receiveClockTick()
@@ -486,7 +486,7 @@ final class DDataReplicatorRocksDB(
 
     case RemovedNodePruningTick => receiveRemovedNodePruningTick()
 
-    case PruningSupport.StartPruning(nodesToRemove) =>
+    case SharedMemoryMapPruningSupport.StartPruning(nodesToRemove) =>
       nodesToRemove.foreach { n =>
         removedNodes = removedNodes.updated(n, allReachableClockTime)
       }
@@ -528,14 +528,14 @@ final class DDataReplicatorRocksDB(
         case RInternal.KeysSetDiff(newKeys, replyTo, fromSystemUid) =>
           receiveBFStatus(replyTo, fromSystemUid, newKeys)
       }
-    case Subscribe(key, ref)           =>
-    case Delete(key, consistency, req) =>
-    case DeltaPropagationTick          =>
+    case _: Subscribe[_]      =>
+    case _: Delete[_]         =>
+    case DeltaPropagationTick =>
   }
 
   def receiveGet(key: KeyR, consistency: ReadConsistency, req: Option[Any]): Unit = {
     val replyTo         = sender()
-    val maybeLocalValue = getData(key.id)
+    val maybeLocalValue = getData(vehicleId2Long(key.id))
     if (isLocalGet(consistency)) {
       val reply = maybeLocalValue match {
         case Some(DataEnvelope(DeletedData, _, _)) => GetDataDeleted(key, req)
@@ -575,9 +575,10 @@ final class DDataReplicatorRocksDB(
     key: KeyR,
     modify: Option[ReplicatedData] => ReplicatedData,
     req: Option[Any]
-  ): Unit =
+  ): Unit = {
+    val k = vehicleId2Long(key.id)
     Try {
-      val localValue = getData(key.id)
+      val localValue = getData(k)
       localValue match {
         case Some(localEnvelope @ DataEnvelope(DeletedData, _, _)) =>
           localEnvelope
@@ -602,18 +603,20 @@ final class DDataReplicatorRocksDB(
         replyTo ! UpdateDataDeleted(key, req)
       case Success(envelope) =>
         log.debug("Received Update for key [{}].", key)
-        val updatedEnvelope = setData(key.id, envelope)
+        // Updated value
+        val updatedEnvelope = setData(k, envelope)
         replyTo ! UpdateSuccess(key, req)
 
       case Failure(e) =>
         log.debug("Received Update for key [{}], failed: {}", key, e.getMessage)
         replyTo ! ModifyFailure(key, "Update failed: " + e.getMessage, e, req)
     }
+  }
 
-  def receiveWrite(key: KeyId, envelope: DataEnvelope, s: ActorRef): Unit =
+  def receiveWrite(key: Long, envelope: DataEnvelope, s: ActorRef): Unit =
     writeAndStore(key, envelope, s, reply = true)
 
-  def writeAndStore(key: KeyId, writeEnvelope: DataEnvelope, replyTo: ActorRef, reply: Boolean): Option[DataEnvelope] =
+  def writeAndStore(key: Long, writeEnvelope: DataEnvelope, replyTo: ActorRef, reply: Boolean): Option[DataEnvelope] =
     write(key, writeEnvelope) match {
       case v @ Some(_) =>
         if (reply) replyTo ! WriteAck
@@ -623,7 +626,7 @@ final class DDataReplicatorRocksDB(
         None
     }
 
-  def write(key: KeyId, thatEnvelope: DataEnvelope): Option[DataEnvelope] =
+  def write(key: Long, thatEnvelope: DataEnvelope): Option[DataEnvelope] =
     getData(key) match {
       case someEnvelope @ Some(envelope) if envelope eq thatEnvelope =>
         someEnvelope
@@ -652,37 +655,36 @@ final class DDataReplicatorRocksDB(
         Some(setData(key, writeEnvelope3))
     }
 
-  def receiveReadRepair(key: KeyId, writeEnvelope: DataEnvelope, replyTo: ActorRef): Unit = {
+  def receiveReadRepair(key: Long, writeEnvelope: DataEnvelope, replyTo: ActorRef): Unit = {
     writeAndStore(key, writeEnvelope, replyTo, reply = false)
     replyTo ! ReadRepairAck
   }
 
-  def setData(key: KeyId, envelope: DataEnvelope): DataEnvelope = {
-    db.put(columnFamily, writeOptions, key.getBytes(StandardCharsets.UTF_8), serializer.toBinary(envelope))
-    bf.tell(BFCmd.PutKey(vehicleId2Long(key)))
+  def setData(key: Long, envelope: DataEnvelope): DataEnvelope = {
+    db.put(columnFamily, writeOptions, Longs.toByteArray(key), serializer.toBinary(envelope))
+    bf.tell(BFCmd.PutKey(key))
     envelope
   }
 
-  def getByKey(key: KeyId): Option[(DataEnvelope, Array[Byte])] = {
-    val envelopeBts = db.get(columnFamily, key.getBytes(StandardCharsets.UTF_8))
-    // val envelopeBts = db.get(columnFamily, Longs.toByteArray(vehicleId2Long(key)))
+  def getByKey(key: Long): Option[(DataEnvelope, Array[Byte])] = {
+    val envelopeBts = db.get(columnFamily, Longs.toByteArray(key))
     if (envelopeBts ne null) {
       val env = serializer.fromBinary(envelopeBts, DataEnvelopeManifest).asInstanceOf[DataEnvelope]
       Some((env, MessageDigest.getInstance(SIG).digest(envelopeBts)))
     } else None
   }
 
-  def getData(key: KeyId): Option[DataEnvelope] = {
-    val envelopeBts = db.get(columnFamily, key.getBytes(StandardCharsets.UTF_8))
+  def getData(key: Long): Option[DataEnvelope] = {
+    val envelopeBts = db.get(columnFamily, Longs.toByteArray(key))
     if (envelopeBts ne null) {
       Some(serializer.fromBinary(envelopeBts, DataEnvelopeManifest).asInstanceOf[DataEnvelope])
     } else None
   }
 
-  def getDeltaSeqNr(key: KeyId, fromNode: UniqueAddress): Long =
+  def getDeltaSeqNr(key: Long, fromNode: UniqueAddress): Long =
     getData(key).map(_.deltaVersions.versionAt(fromNode)).getOrElse(0L)
 
-  def isNodeRemoved(node: UniqueAddress, keys: Iterable[KeyId]): Boolean =
+  def isNodeRemoved(node: UniqueAddress, keys: Iterable[Long]): Boolean =
     removedNodes.contains(node) || keys.exists(key => getData(key).map(_.pruning.contains(node)).getOrElse(false))
 
   def receiveGossipTick(): Unit =
@@ -708,22 +710,21 @@ final class DDataReplicatorRocksDB(
       try {
         val startKey = lastMerkleTree.get()
         if (startKey == null) iter.seekToFirst()
-        else iter.seek(startKey.getBytes(StandardCharsets.UTF_8))
+        else iter.seek(Longs.toByteArray(startKey))
 
         var i      = maxDeltaElements
         val buffer = mutable.ArrayBuilder.make[Array[Byte]]
 
         while (i > 0)
           if (iter.isValid) {
-            val keyStr      = new String(iter.key(), StandardCharsets.UTF_8)
-            val envelopeBts = iter.value()
-            buffer.+=(MessageDigest.getInstance(SIG).digest(envelopeBts))
-            lastMerkleTree.set(keyStr)
+            val key = Longs.fromByteArray(iter.key())
+            buffer.+=(MessageDigest.getInstance(SIG).digest(iter.value()))
+            lastMerkleTree.set(key)
             i = i - 1
             iter.next()
           } else {
             i = 0
-            lastMerkleTree.set(null)
+            lastMerkleTree.set(Long.MinValue)
           }
 
         val arrays = buffer.result()
@@ -786,23 +787,23 @@ final class DDataReplicatorRocksDB(
         val iter     = db.newIterator(columnFamily, readOps)
         try {
           val lastGossipedKey = lastGossiped.get()
-          if (lastGossipedKey == null) iter.seekToFirst()
-          else iter.seek(lastGossipedKey.getBytes(StandardCharsets.UTF_8))
+          if (lastGossipedKey == Long.MinValue) iter.seekToFirst()
+          else iter.seek(Longs.toByteArray(lastGossipedKey))
 
           var i       = maxDeltaElements
           var digests = immutable.Map.empty[String, Digest]
           while (i > 0)
             if (iter.isValid) {
-              val keyStr = new String(iter.key(), StandardCharsets.UTF_8)
+              val key    = Longs.fromByteArray(iter.key())
               val digBts = MessageDigest.getInstance(SIG).digest(iter.value())
-              digests = digests + (keyStr -> ByteString.fromArrayUnsafe(digBts))
+              digests = digests + (key.toString -> ByteString.fromArrayUnsafe(digBts))
 
-              lastGossiped.set(keyStr)
+              lastGossiped.set(key)
               i = i - 1
               iter.next()
             } else {
               i = 0
-              lastGossiped.set(null)
+              lastGossiped.set(Long.MinValue)
             }
 
           val status = Status(digests, 0, 0, Some(address.longUid), selfFromSystemUid)
@@ -829,8 +830,8 @@ final class DDataReplicatorRocksDB(
     fromSystemUid: Option[Long]
   ): Unit =
     thatDigests.get(BF_KEY) match {
-      case Some(digest) =>
-        bf.tell(BFCmd.EvalDiff(digest, replyTo, fromSystemUid))
+      case Some(otherBF) =>
+        bf.tell(BFCmd.EvalDiff(otherBF, replyTo, fromSystemUid))
       case None =>
         receiveStatus0(replyTo, thatDigests, fromSystemUid)
     }
@@ -843,9 +844,8 @@ final class DDataReplicatorRocksDB(
 
     val different: mutable.Map[String, DataEnvelope] = new mutable.HashMap()
     additional.foreach { key =>
-      val strKey = key.toString
-      getByKey(strKey).foreach { case (env, _) =>
-        different.put(strKey, env)
+      getByKey(key).foreach { case (env, _) =>
+        different.put(key.toString, env)
       }
     }
 
@@ -867,7 +867,6 @@ final class DDataReplicatorRocksDB(
     thatDigests: Map[KeyId, Digest],
     fromSystemUid: Option[Long]
   ): Unit = {
-    // val replyTo = sender()
     log.debug(
       "Received gossip status from {}, containing {} keys [{},...]",
       replyTo.path.address,
@@ -888,7 +887,7 @@ final class DDataReplicatorRocksDB(
     val missingKeys                                  = new ArrayBuffer[String]()
     val different: mutable.Map[String, DataEnvelope] = new mutable.HashMap()
     thatDigests.foreach { case (key, thatDigest) =>
-      getByKey(key) match {
+      getByKey(vehicleId2Long(key)) match {
         case Some((env, localDigest)) =>
           digestStatus(localDigest, thatDigest.toArrayUnsafe()) match {
             case DigestStatus.Same =>
@@ -991,7 +990,7 @@ final class DDataReplicatorRocksDB(
         case size => size
       }
 
-      getData(key).foreach { dataEnvelope =>
+      getData(vehicleId2Long(key)).foreach { dataEnvelope =>
         val envelopeSize = 100 + dataEnvelope.estimatedSizeWithoutData
         val entrySize    = keySize + dataSize + envelopeSize
         if (sum + entrySize <= maxMessageSize) {
@@ -1031,17 +1030,18 @@ final class DDataReplicatorRocksDB(
     val writeBatch = new WriteBatch()
     updatedData.foreach { case (key, thatEnvelope) =>
       allKeys += key
-      getData(key) match {
+      val k = vehicleId2Long(key)
+      getData(k) match {
         case Some(localEnv) =>
           if (localEnv != thatEnvelope) {
             val merged = (thatEnvelope.addSelf(selfUniqueAddress) merge localEnv).addSeen(selfAddress)
-            writeBatch.put(columnFamily, key.getBytes, serializer.toBinary(merged))
+            writeBatch.put(columnFamily, Longs.toByteArray(k), serializer.toBinary(merged))
             if (merged.pruning.nonEmpty)
               replyKeys += key
           }
         case None =>
           val merged = thatEnvelope.addSelf(selfUniqueAddress).addSeen(selfAddress)
-          writeBatch.put(columnFamily, key.getBytes, serializer.toBinary(merged))
+          writeBatch.put(columnFamily, Longs.toByteArray(k), serializer.toBinary(merged))
       }
     }
     if (allKeys.nonEmpty)

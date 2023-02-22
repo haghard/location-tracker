@@ -244,7 +244,7 @@ public class SharedMemoryLongMap extends SharedMemoryMap<Long, SharedMemoryLongM
 
     public <Env> CompletableFuture<Long> initPruningAsync(
             scala.collection.immutable.Set<UniqueAddress> nodes,
-            Function<akka.cluster.ddata.replicator.PruningSupport.Param, Unit> func
+            Function<akka.cluster.ddata.replicator.SharedMemoryMapPruningSupport.Param, Unit> func
     ) {
         final CompletableFuture<Long> promise = new CompletableFuture<>();
         AsyncExecutor.submit(() -> {
@@ -257,7 +257,7 @@ public class SharedMemoryLongMap extends SharedMemoryMap<Long, SharedMemoryLongM
 
     private <Env> Long initPruning(
         scala.collection.immutable.Set<UniqueAddress> nodes,
-        Function<akka.cluster.ddata.replicator.PruningSupport.Param, Unit> func
+        Function<akka.cluster.ddata.replicator.SharedMemoryMapPruningSupport.Param, Unit> func
     ) {
         long i = 0L;
         for (int index = 0; index < capacity; index += 1) { //search by segments
@@ -269,7 +269,7 @@ public class SharedMemoryLongMap extends SharedMemoryMap<Long, SharedMemoryLongM
                     SharedMemoryValue value = valueAt(entry);
                     Env envelope = (Env) value.envelope;
                     //func.apply(new akka.cluster.ddata.replicator.PruningSupport.Param(nodes, Long.toHexString(key), envelope));
-                    func.apply(new akka.cluster.ddata.replicator.PruningSupport.Param(nodes, key.toString(), envelope));
+                    func.apply(new akka.cluster.ddata.replicator.SharedMemoryMapPruningSupport.Param(nodes, key.toString(), envelope));
                     i++;
                 }
             } finally {

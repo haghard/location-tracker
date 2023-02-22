@@ -46,7 +46,7 @@ trait Ops {
     Try(Source.fromFile(path)).map { src =>
       Using.resource(src) { reader =>
         val buffer = new StringBuffer()
-        val iter   = reader.getLines
+        val iter   = reader.getLines()
         while (iter.hasNext) buffer.append(iter.next)
         buffer.toString
       }

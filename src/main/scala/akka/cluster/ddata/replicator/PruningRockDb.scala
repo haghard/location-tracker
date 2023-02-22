@@ -10,13 +10,13 @@ import akka.cluster.ddata.RemovedNodePruning
 import akka.cluster.ddata.Replicator.Internal.DataEnvelope
 import akka.cluster.ddata.replicator.DDataReplicatorRocksDB.DataEnvelopeManifest
 import akka.serialization.SerializerWithStringManifest
+import com.google.common.primitives.Longs
 import org.rocksdb.ColumnFamilyHandle
 import org.rocksdb.ReadOptions
 import org.rocksdb.RocksDB
 import org.rocksdb.WriteBatch
 import org.rocksdb.WriteOptions
 
-import java.nio.charset.StandardCharsets
 import java.util.concurrent.ThreadLocalRandom
 import scala.collection.SortedSet
 import scala.collection.mutable
@@ -88,7 +88,6 @@ trait PruningRockDb {
       val limit             = 6 // TODO: Config
       var addressesToRemove = Set.empty[UniqueAddress]
 
-      // Readers do not block writers.
       val snapshot = db.getSnapshot
       val readOps  = new ReadOptions().setSnapshot(snapshot)
       val iter     = db.newIterator(columnFamily, readOps)
@@ -112,7 +111,7 @@ trait PruningRockDb {
             db.releaseSnapshot(snapshot)
 
       log.warning(s"Members to remove:${addressesToRemove.size} - [${addressesToRemove.mkString(",")}]")
-      replyTo ! PruningSupport.StartPruning(addressesToRemove)
+      replyTo ! SharedMemoryMapPruningSupport.StartPruning(addressesToRemove)
     }
 
   /** The leader initiates the pruning by adding a [[PruningInitialized]] marker in the data envelope. This is gossiped
@@ -138,7 +137,6 @@ trait PruningRockDb {
         val env = serializer.fromBinary(envelope, DataEnvelopeManifest).asInstanceOf[DataEnvelope]
         nodesToRemove.foreach { rmv =>
           if (env.needPruningFrom(rmv)) {
-            // val strKey = new String(key, StandardCharsets.UTF_8)
             env.data match {
               case _: RemovedNodePruning =>
                 env.pruning.get(rmv) match {
@@ -195,7 +193,6 @@ trait PruningRockDb {
 
     val writeBatch = new WriteBatch()
     keysToPrune.foreach { keyBts =>
-      val key      = new String(keyBts, StandardCharsets.UTF_8)
       val envelope = db.get(columnFamily, keyBts)
 
       serializer.fromBinary(envelope, DataEnvelopeManifest).asInstanceOf[DataEnvelope] match {
@@ -206,8 +203,13 @@ trait PruningRockDb {
               // the leader performs the pruning and changes the marker to `PruningPerformed`, so that nobody else will redo the pruning.
               val AllAdds = all.map(_.address)
               if (initiator == selfUniqueAddress && (all.isEmpty || seen.intersect(AllAdds) == AllAdds)) {
-                if (ThreadLocalRandom.current().nextDouble() > .9)
-                  log.warning("***** Pruned:{}. Key:{} Seen:[{}]", removedAddress, key, seen.mkString(","))
+                if (ThreadLocalRandom.current().nextDouble() > .95)
+                  log.warning(
+                    "***** Pruned:{}. Key:{} Seen:[{}]",
+                    removedAddress,
+                    Longs.fromByteArray(keyBts),
+                    seen.mkString(",")
+                  )
 
                 val pruned = e.prune(removedAddress, pruningPerformed)
                 writeBatch.put(columnFamily, keyBts, serializer.toBinary(pruned))

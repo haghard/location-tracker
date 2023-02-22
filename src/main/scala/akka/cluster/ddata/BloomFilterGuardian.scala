@@ -9,11 +9,11 @@ import akka.cluster.ddata.Replicator.Internal.Status
 import akka.cluster.ddata.replicator.DDataReplicatorRocksDB
 import akka.cluster.ddata.replicator.bf2.BloomFilterRange
 import akka.stream.BoundedSourceQueue
+import com.google.common.primitives.Longs
 import org.rocksdb.ColumnFamilyHandle
 import org.rocksdb.ReadOptions
 import org.rocksdb.RocksDB
 
-import java.nio.charset.StandardCharsets
 import scala.collection.immutable
 import scala.collection.mutable
 
@@ -47,6 +47,7 @@ object BloomFilterGuardian {
   ): Behavior[BFCmd] =
     Behaviors.setup { ctx =>
       val keysBitMap = load(db, cFamily)
+      ctx.log.warn("★ ★ ★  KeysBitMap.Cardinality {}  ★ ★ ★ ", keysBitMap.getLongCardinality)
       active(keysBitMap, internals, maxGossipElements)
     }
 
@@ -114,10 +115,7 @@ object BloomFilterGuardian {
     try {
       iter.seekToFirst()
       while (iter.isValid) {
-        val key = DDataReplicatorRocksDB.vehicleId2Long(new String(iter.key(), StandardCharsets.UTF_8))
-        // TODO:
-        // Longs.fromByteArray(iter.key())
-        // Longs.toByteArray()
+        val key = Longs.fromByteArray(iter.key())
         bm.add(key)
         iter.next()
       }

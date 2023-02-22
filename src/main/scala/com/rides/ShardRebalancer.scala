@@ -141,8 +141,8 @@ object ShardRebalancer {
     rebalanceInterval: FiniteDuration
   ): Behavior[ClusterDomainEvent] =
     Behaviors.setup[ClusterDomainEvent] { ctx =>
-      implicit val ec = ctx.system.dispatchers.lookup(DispatcherSelector.fromConfig("akka.actor.internal-dispatcher"))
-      implicit val logger = ctx.log
+      // implicit val ec = ctx.system.dispatchers.lookup(DispatcherSelector.fromConfig("akka.actor.internal-dispatcher"))
+      // implicit val logger = ctx.log
 
       val cluster = akka.cluster.typed.Cluster(ctx.system)
       cluster.subscriptions.tell(akka.cluster.typed.Subscribe(ctx.self, classOf[ClusterDomainEvent]))

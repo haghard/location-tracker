@@ -6,13 +6,13 @@ import akka.cluster.typed.Cluster
 import akka.serialization.SerializationExtension
 import akka.serialization.SerializerWithStringManifest
 import akka.stream.scaladsl.Source
+import com.google.common.primitives.Longs
 import com.rides.domain.GetLocation
 import com.rides.domain.ReportLocation
 import com.rides.domain.types.protobuf.Location
 import org.rocksdb.ColumnFamilyHandle
 import org.rocksdb.RocksDB
 
-import java.nio.charset.StandardCharsets
 import scala.concurrent.Future
 import scala.util.Try
 
@@ -89,16 +89,11 @@ class VehicleServiceApi(
 
   override def getCoordinates(req: GetRequest): Future[VehicleReply] =
     Try {
-      val envelopeBts = db.get(columnFamily, req.vehicleId.toString.getBytes(StandardCharsets.UTF_8))
-      /*val buf         = ByteBuffer.wrap(db.get(columnFamily, req.vehicleId.toString.getBytes(StandardCharsets.UTF_8)))
-      val len         = buf.getInt()
-      val envelopeBts = Array.ofDim[Byte](len)
-      buf.get(envelopeBts)*/
+      val envelopeBts = db.get(columnFamily, Longs.toByteArray(req.vehicleId))
 
       // Before serving reads we need to check
       // 1. If the KV is durable.
       // 2. If yes, we compare localValue.version with req.version
-
       val localValue = DDataReplicatorRocksDB.readLocal(envelopeBts, serializer)
       val requestId  = wvlet.airframe.ulid.ULID.newULID.toString
       if (localValue.isDurable(cluster.state.members.map(_.uniqueAddress))) {

@@ -149,7 +149,7 @@ final class DDataReplicator2(
     with ActorLogging
     with Stash
     with Timers
-    with PruningSupport {
+    with SharedMemoryMapPruningSupport {
 
   import Replicator.Internal._
   import Replicator._
@@ -299,7 +299,7 @@ final class DDataReplicator2(
 
     case RemovedNodePruningTick => receiveRemovedNodePruningTick()
 
-    case PruningSupport.StartPruning(removedNodesFromDisk) =>
+    case SharedMemoryMapPruningSupport.StartPruning(removedNodesFromDisk) =>
       log.warning("*** StartPruning adds from disk [{}]", removedNodesFromDisk.mkString(","))
       removedNodesFromDisk.foreach { rn =>
         removedNodes = removedNodes.updated(rn, allReachableClockTime)
@@ -312,27 +312,27 @@ final class DDataReplicator2(
           .to(immutable.Set)
       initPruning(removed)
 
-    case PruningSupport.PruningStep(key, envelope, removed, action) =>
+    case SharedMemoryMapPruningSupport.PruningStep(key, envelope, removed, action) =>
       action match {
-        case PruningSupport.PruningAction.Inited =>
+        case SharedMemoryMapPruningSupport.PruningAction.Initialized =>
         // log.warning("*** Pruning [{} -> {}] for {} inited", removed, selfUniqueAddress, key)
-        case PruningSupport.PruningAction.Performed =>
+        case SharedMemoryMapPruningSupport.PruningAction.Performed =>
         // log.warning("*** Pruning [{} -> {}] for [{}] performed", removed, selfUniqueAddress, key)
       }
       setData(key, envelope)
 
-    case PruningSupport.PruningRoundInited =>
+    case SharedMemoryMapPruningSupport.PruningRoundInitialized =>
       // log.warning("Step 1. [PruningInitialized]")
       performPruning(allNodes)
 
-    case PruningSupport.DeleteObsoletePruningPerformed(key, envelope, removedAddresses) =>
+    case SharedMemoryMapPruningSupport.DeleteObsoletePruningPerformed(key, envelope, removedAddresses) =>
       // if (ThreadLocalRandom.current().nextDouble() < .1)
       // log.warning("Pruning:Step 3. [DeleteObsoletePruningPerformed {}] from {}", removedAddresses.mkString(","), key)
 
       setData(key, envelope)
       removedAddresses.foreach(ua => removedNodes -= ua)
 
-    case PruningSupport.PruningRoundFinished =>
+    case SharedMemoryMapPruningSupport.PruningRoundFinished =>
       log.info("************** PruningRoundFinished **************")
 
     case Subscribe(key, ref) =>
