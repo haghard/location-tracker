@@ -21,6 +21,8 @@ import scala.collection.mutable
   TODO:
     Mark ranges as dirty
     Use keysBitMap.forEachInRange() to create BloomFilterRange for dirty ranges.
+
+    HashRing of LongArrayBitSet.zero(16) ???
  */
 object BloomFilterGuardian {
 
@@ -36,7 +38,7 @@ object BloomFilterGuardian {
 
     final case class EvalDiff(otherBF: Digest, replyTo: ActorRef, fromSystemUid: Option[Long]) extends BFCmd
 
-    final case class AddKeys(value: Set[Long]) extends BFCmd
+    final case class AddKeys(gossipedKeys: Set[Long]) extends BFCmd
   }
 
   def apply(

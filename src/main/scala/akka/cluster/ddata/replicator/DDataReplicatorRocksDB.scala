@@ -39,6 +39,7 @@ import akka.stream.scaladsl.RunnableGraph
 import akka.stream.scaladsl.Sink
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
+import com.google.common.primitives.Longs
 import org.rocksdb.ColumnFamilyHandle
 import org.rocksdb.ReadOptions
 import org.rocksdb.RocksDB
@@ -62,8 +63,8 @@ import scala.concurrent.duration.FiniteDuration
 import scala.util.Failure
 import scala.util.Success
 import scala.util.Try
+
 import DDataReplicatorRocksDB.*
-import com.google.common.primitives.Longs
 
 object DDataReplicatorRocksDB {
 
@@ -88,7 +89,7 @@ object DDataReplicatorRocksDB {
       .asInstanceOf[ReplicatedVehicle]
 
   def vehicleId2Long(vehicleId: String): Long =
-    // com.google.common.primitives.Longs.tryParse(vehicleId)
+    // OR com.google.common.primitives.Longs.tryParse(vehicleId)
     java.lang.Long.parseLong(vehicleId)
 
   val NotFoundDig = Array[Byte](-1)
@@ -1024,28 +1025,28 @@ final class DDataReplicatorRocksDB(
       updatedData.keySet.take(5).mkString(", ")
     )
 
-    var replyKeys = Set.empty[KeyId]
-    var allKeys   = Set.empty[KeyId]
+    var replyKeys    = Set.empty[KeyId]
+    var gossipedKeys = Set.empty[Long]
 
     val writeBatch = new WriteBatch()
-    updatedData.foreach { case (key, thatEnvelope) =>
-      allKeys += key
-      val k = vehicleId2Long(key)
-      getData(k) match {
+    updatedData.foreach { case (strKey, thatEnvelope) =>
+      val key = vehicleId2Long(strKey)
+      gossipedKeys += key
+      getData(key) match {
         case Some(localEnv) =>
           if (localEnv != thatEnvelope) {
             val merged = (thatEnvelope.addSelf(selfUniqueAddress) merge localEnv).addSeen(selfAddress)
-            writeBatch.put(columnFamily, Longs.toByteArray(k), serializer.toBinary(merged))
+            writeBatch.put(columnFamily, Longs.toByteArray(key), serializer.toBinary(merged))
             if (merged.pruning.nonEmpty)
-              replyKeys += key
+              replyKeys += strKey
           }
         case None =>
           val merged = thatEnvelope.addSelf(selfUniqueAddress).addSeen(selfAddress)
-          writeBatch.put(columnFamily, Longs.toByteArray(k), serializer.toBinary(merged))
+          writeBatch.put(columnFamily, Longs.toByteArray(key), serializer.toBinary(merged))
       }
     }
-    if (allKeys.nonEmpty)
-      bf.tell(BFCmd.AddKeys(allKeys.map(vehicleId2Long(_))))
+    if (gossipedKeys.nonEmpty)
+      bf.tell(BFCmd.AddKeys(gossipedKeys))
 
     if (writeBatch.hasPut) {
       db.write(writeOptions, writeBatch)
@@ -1053,8 +1054,8 @@ final class DDataReplicatorRocksDB(
     }
 
     if (sendBack && replyKeys.nonEmpty) {
-      createGossipMessages(replyKeys.iterator, sendBack = false, fromSystemUid).foreach { g =>
-        replyTo ! g
+      createGossipMessages(replyKeys.iterator, sendBack = false, fromSystemUid).foreach { gossip =>
+        replyTo ! gossip
       }
     }
   }

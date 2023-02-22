@@ -3,7 +3,6 @@ package com.rides
 import akka.actor.Address
 import akka.actor.RootActorPath
 import akka.actor.typed.Behavior
-import akka.actor.typed.DispatcherSelector
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.scaladsl.adapter.*
 import akka.cluster.ClusterEvent.ClusterDomainEvent
