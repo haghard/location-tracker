@@ -84,17 +84,6 @@ com.rides.VehicleService.Subscribe
 `grpcurl -d '{"vehicleId":1}' -plaintext 127.0.0.1:8080 com.rides.VehicleService/Subscribe`
 
 
-### Example
-
-```mermaid
- graph TD
-     Uninitialized --> |Cmd:Provision -> Evn:AccountCreated| Provisioning
-     Provisioning --> |OpenAccount: AccountOpened| Open
-     Provisioning -.-> |CancelProvisioning: AccountCancelled| Cancelled    
-     Open --> PendingClosure
-     PendingClosure --> Closed     
-```
-
 
 ### TODOs
 
